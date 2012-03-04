@@ -15,5 +15,10 @@
 <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/stopButton1" android:text="Stop recording" android:onClick="myClickHandler"></Button>
 </LinearLayout>
 <TextView android:text="" android:id="@+id/recordingStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
+<ListView
+ android:id="@+id/filelist"
+ android:layout_width="fill_parent" 
+ android:layout_height="wrap_content" 
+ />
 </LinearLayout>
 
