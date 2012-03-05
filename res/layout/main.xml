@@ -5,14 +5,14 @@
 <TextView  
     android:layout_width="fill_parent" 
     android:layout_height="wrap_content" 
-    android:text="Welcome to Movement Lab v. 0.0001"
+    android:text="Dance Lab v. 0.2"
     android:id="@+id/titleText1"/>
 <TextView android:id="@+id/textViewStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Recording to:"></TextView>
 <TextView android:text="" android:id="@+id/textViewFname1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
 <CheckBox android:text="Create timestamped files" android:id="@+id/checkBoxTimestamps1" android:layout_width="wrap_content" android:layout_height="wrap_content"  android:onClick="myClickHandler"></CheckBox>
 <LinearLayout android:layout_height="wrap_content" android:layout_width="fill_parent" android:id="@+id/linearLayout1">
 <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/startButton1" android:text="Start recording" android:onClick="myClickHandler"></Button>
-<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/stopButton1" android:text="Stop recording" android:onClick="myClickHandler"></Button>
+<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/stopButton1" android:text="Press 3x to stop" android:onClick="myClickHandler"></Button>
 <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/beepButton1" android:text="Beep" android:onClick="myClickHandler"></Button>
 
 </LinearLayout>

@@ -27,6 +27,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.PowerManager;
 import android.view.View;
 //import android.widget.EditText;
 import android.widget.ArrayAdapter;
@@ -40,7 +41,7 @@ import android.util.Log;
 public class DanceLab extends Activity {
 
 	private static final String TAG = "DanceLab";  
-	private static boolean DEBUG_FILENAME = true;
+    private static boolean DEBUG_FILENAME = false; 
 
     private boolean appendTimestamps = false;
 	private TextView statusText, fnameText;
@@ -48,6 +49,9 @@ public class DanceLab extends Activity {
 	private FileManager fileManager;
 	private DataLogger logger;
     private DLSoundRecorder soundrec;
+
+    private PowerManager pm;
+    private PowerManager.WakeLock wl;
 
     /** Called when the activity is first created. */
     @Override
@@ -62,7 +66,9 @@ public class DanceLab extends Activity {
 	logger = new DataLogger();
 		soundrec = new DLSoundRecorder();
 	updateFileList();
-        
+         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+         wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, TAG);
+
         Thread.setDefaultUncaughtExceptionHandler(new CustomExceptionHandler(
                 "/sdcard/dancelab/", null));
       }
@@ -80,6 +86,8 @@ public class DanceLab extends Activity {
     public void myClickHandler(View view) {
 	switch (view.getId()) {
 	case R.id.startButton1:
+	    if (logger.isActive()) return;
+	    wl.acquire();
 	    fileManager.makeTsFilename();
 	    soundrec.start();
 	    logger.startLogging();
@@ -87,10 +95,7 @@ public class DanceLab extends Activity {
 	    displayToast("Initiating recording");
 	    break;
 	case R.id.stopButton1:
-	    logger.stopLogging();
-	    soundrec.stop();
-	    statusText.setText("stopped; " + logger.getRunInfo());
-	    updateFileList();
+	    stopRecordingMaybe();
 	    break;
 	case R.id.beepButton1:
 	    beep();
@@ -101,6 +106,36 @@ public class DanceLab extends Activity {
 	    else
             	appendTimestamps = false;
 	}
+    }
+
+    int stopPressCounter = 0;
+    long firstPressMs = 0;
+    boolean stoppingMaybe = false;
+    int NUM_STOP_PRESSES = 3;
+    int STOP_PRESS_MS = 500;
+    public void stopRecordingMaybe() {
+	long now = System.currentTimeMillis();
+	if (!stoppingMaybe) {
+	    stopPressCounter = 1;
+	    firstPressMs = now;
+	    stoppingMaybe = true;
+	} else {
+	    stopPressCounter++;
+	    if (stopPressCounter >= NUM_STOP_PRESSES) {
+		stoppingMaybe = false;
+		if ((int)(now - firstPressMs) < STOP_PRESS_MS) 
+		    stopRecording();
+	    }
+	}
+    }
+
+    public void stopRecording() {
+    	if (wl.isHeld())
+    		wl.release();	
+	logger.stopLogging();
+	soundrec.stop();
+	statusText.setText("stopped; " + logger.getRunInfo());
+	updateFileList();
     }
 
     public void beep() {
@@ -138,21 +173,36 @@ public class DanceLab extends Activity {
 	private final byte generatedSnd[] = new byte[2 * numSamples];
 	
 	Handler handler = new Handler();
+	
+	public DLBeeper() {
+	    genTone();
+	}
 
 	public void beep() {
 	    // Use a new tread as this can take a while
 	    final Thread thread = new Thread(new Runnable() {
 		    public void run() {
-			genTone();
-			handler.post(new Runnable() {
-				public void run() {
-				    playSound();
-				}
-			    });
+			playSound();
 		    }
 		});
+	    thread.setPriority(Thread.MAX_PRIORITY);
 	    thread.start();
 	}
+
+	// public void beep() {
+	//     // Use a new tread as this can take a while
+	//     final Thread thread = new Thread(new Runnable() {
+	// 	    public void run() {
+	// 		genTone();
+	// 		handler.post(new Runnable() {
+	// 			public void run() {
+	// 			    playSound();
+	// 			}
+	// 		    });
+	// 	    }
+	// 	});
+	//     thread.start();
+	// }
 
 	private void genTone() {
 	    // fill out the array
@@ -280,6 +330,8 @@ public class DanceLab extends Activity {
 	idx = num_a = num_g = 0;
 
     }
+	
+	public boolean isActive() { return loggingIsOn; }
 
 	protected void startLogging() {
 		mHandlerThread = new HandlerThread("sensorThread");
@@ -425,8 +477,9 @@ public class DanceLab extends Activity {
 	    
     protected class DLSoundRecorder {
 	
-    private MediaRecorder recorder;
-		
+	private MediaRecorder recorder;
+	private boolean recordingIsOn = false;
+
 	public DLSoundRecorder() {
 	    recorder = new MediaRecorder();
 	    recorderSetSettings();
@@ -443,6 +496,7 @@ public class DanceLab extends Activity {
 	}
 
 	public void start() {
+		if (recordingIsOn) return;
 	    recorder.setOutputFile(fileManager.getDataDir() + "/" + fileManager.getTsFilename() + ".3gp");
 	    try {
 			recorder.prepare();
@@ -450,9 +504,12 @@ public class DanceLab extends Activity {
 		} catch (IOException e) {
 		}
 	    recorder.start(); 
+	    recordingIsOn = true;
 	}
 	public void stop() {
-	    recorder.stop();
+	    if (recordingIsOn)
+		recorder.stop();
+	    recordingIsOn = false;
 	    recorder.reset();
 	    recorderSetSettings();
 	}
