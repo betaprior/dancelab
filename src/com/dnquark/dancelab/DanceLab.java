@@ -23,6 +23,7 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -138,111 +139,53 @@ public class DanceLab extends Activity {
 	updateFileList();
     }
 
+    MediaPlayer mPlayer;
+    boolean isBeeping = false;
     public void beep() {
-	DLBeeper b = new DLBeeper();
-	b.beep();
+    	if (isBeeping) return;
+	    mPlayer = MediaPlayer.create(DanceLab.this, R.raw.beep440);
+	    final String eol = String.format("%n");
+	    mPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+            public void onCompletion(MediaPlayer mp) {
+		if (logger.isActive())
+		    logger.metadataWrite("beep_end " + Long.toString(System.currentTimeMillis()) 
+					 + " " + Long.toString(System.nanoTime()) + eol);
+        	mPlayer.stop();
+        	mPlayer.release();
+        	isBeeping = false;
+            }
+        });
+	    if (logger.isActive())
+		logger.metadataWrite("beep_start " + Long.toString(System.currentTimeMillis()) 
+				     + " " + Long.toString(System.nanoTime()) + eol);
+	    mPlayer.start();
+	    isBeeping = true;
     }
     
-    // public void beep() {
-    // 	Thread bgdBeepThread = new Thread(new Runnable() {
-    // 		public void run() {
-    // 		    play_note();
-    // 		}
-    // 	    });
-    // 	bgdBeepThread.start();
-    // }
-   
-    // MediaPlayer m_mediaPlayer; 
-    // private void play_note() {
-    // 	int BEEP_DURATION = 2200;
-    // 	m_mediaPlayer = MediaPlayer.create(this, R.raw.a4);
-    // 	m_mediaPlayer.start();
-    // 	try {
-    // 	    Thread.sleep(BEEP_DURATION);
-    // 	} catch (InterruptedException e) { }
-
-    // } 
-
-    protected class DLBeeper {
-	private final int duration = 3; // seconds
-	private final int sampleRate = 8000;
-	private final int numSamples = duration * sampleRate;
-	private final double sample[] = new double[numSamples];
-	private final double freqOfTone = 440; // hz
-	
-	private final byte generatedSnd[] = new byte[2 * numSamples];
-	
-	Handler handler = new Handler();
-	
-	public DLBeeper() {
-	    genTone();
-	}
-
-	public void beep() {
-	    // Use a new tread as this can take a while
-	    final Thread thread = new Thread(new Runnable() {
-		    public void run() {
-			playSound();
-		    }
-		});
-	    thread.setPriority(Thread.MAX_PRIORITY);
-	    thread.start();
-	}
-
-	// public void beep() {
-	//     // Use a new tread as this can take a while
-	//     final Thread thread = new Thread(new Runnable() {
-	// 	    public void run() {
-	// 		genTone();
-	// 		handler.post(new Runnable() {
-	// 			public void run() {
-	// 			    playSound();
-	// 			}
-	// 		    });
-	// 	    }
-	// 	});
-	//     thread.start();
-	// }
-
-	private void genTone() {
-	    // fill out the array
-	    for (int i = 0; i < numSamples; ++i)
-		sample[i] = Math.sin(2 * Math.PI * i / (sampleRate/freqOfTone));
-	    
-	    // convert to 16 bit pcm sound array
-	    // assumes the sample buffer is normalised.
-	    int idx = 0;
-	    for (final double dVal : sample) {
-		// scale to maximum amplitude
-		final short val = (short) ((dVal * 32767));
-		// in 16 bit wav PCM, first byte is the low order byte
-		generatedSnd[idx++] = (byte) (val & 0x00ff);
-		generatedSnd[idx++] = (byte) ((val & 0xff00) >>> 8);
-	    }
-	}
-
-	void playSound() {
-	    final AudioTrack audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
-							 sampleRate, AudioFormat.CHANNEL_CONFIGURATION_MONO,
-							 AudioFormat.ENCODING_PCM_16BIT, 2*numSamples,
-							 AudioTrack.MODE_STATIC);
-	    audioTrack.write(generatedSnd, 0, generatedSnd.length);
-	    audioTrack.play();
-	}
-    }
+    
 
 	public void updateFileList() {
 		ListView listView = (ListView) findViewById(R.id.filelist);
 		List<String> filenames = fileManager.getFileListing();
 		if (filenames == null) return;
 		Collections.sort(filenames, Collections.reverseOrder());
+		String tsDateEOL = ".*\\d{8}-\\d{6}$";
+		List<String> filenamesFiltered = new ArrayList<String>();
+		for (String l : filenames)
+		    if (l.matches(tsDateEOL))
+			filenamesFiltered.add(l);
     ArrayAdapter<String> fileList =
-  	      new ArrayAdapter<String>(this, R.layout.row, filenames);
+  	      new ArrayAdapter<String>(this, R.layout.row, filenamesFiltered);
 
   	     listView.setAdapter(fileList);
 
   	    }
 
+	@Override
+	public void onBackPressed() {
+		if (logger.isActive())
+			displayToast("Stop data logging before exiting");
+	}
 	
 	private void displayToast(String msg) {
 	         Toast.makeText(getBaseContext(), msg, 
@@ -256,6 +199,7 @@ public class DanceLab extends Activity {
 	     soundrec.release();
 	 }	
 	    
+    
     public String getTimestamp() {
         Date dateNow = new Date ();
         SimpleDateFormat tsFormat = new SimpleDateFormat("yyyyMMdd-HHmmss");
@@ -372,11 +316,17 @@ public class DanceLab extends Activity {
     
     public void writeMetadataStart() {
 	try {
-	    outfileBWriterMeta.write("t_i" + Long.toString(tStart));
+	    outfileBWriterMeta.write("t_i " + Long.toString(tStart));
 	    outfileBWriterMeta.newLine();
 	} catch (IOException e) { }
     }
 
+    public void metadataWrite(String s) {
+	try {
+	    outfileBWriterMeta.write(s);
+	} catch (IOException e) { }
+    }
+	
     public void writeMetadataEnd() {
 	long diffStartStop = tStop - tStart;
 	float msPerSample = diffStartStop/(idx+1);
