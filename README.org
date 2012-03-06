@@ -1,0 +1,29 @@
+* DanceLab: general information
+
+This project is designed to ease data collection for the analysis of Lindy
+Hop movement.  On every run, the application produces 3 timestamped files:
+
+- Acceleration and gyroscope data 
+- Audio data recorded from the microphone that corresponds exactly to the
+  logged acceleration data
+- Metadata giving the start and stop timestamps, the beep timestamps, and the
+  computed sampling rate
+
+Compatibility: currently, this only runs on Gingerbread devices and higher
+due to the use of the gyroscope and AAC APIs.
+
+* Usage notes
+
+- Hit start on the devices that are logging the data. With the logging
+  devices (and the video camera) in very close proximity, hit the /Beep/
+  button on one of the phones. This will produce a 440 Hz tone that will be
+  used to sync data traces.
+- To stop recording, hit /Stop/ 3 times in quick succession (this is done to
+  prevent accidental presses).
+- The screen stays on throughout logging. Apparently, collecting acceleration
+  data in standby mode is non-trivial or impossible (I have not seen
+  definitive answers about whether partial wake locks solve this).
+- Data collection will stop if home or power buttons get pressed during
+  logging, so try to avoid that.
+- audio can be converted into a form suitable for Matlab/SciPy/Mathematica
+  analysis via  =ffmpeg -i test.3gp -vn -f wav -acodec pcm_u8 test.wav=
