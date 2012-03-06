@@ -263,6 +263,7 @@ public class DanceLab extends Activity {
     private File outfile, outfileMeta;
     private BufferedWriter outfileBWriter, outfileBWriterMeta;
     private Long tStart, tStop;
+    private Long tStart_ns, tStop_ns;
     
 	public DataLogger() { 
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -270,7 +271,7 @@ public class DanceLab extends Activity {
 	gyroVals = new float[NDIMS];
 	for (int i = 0; i < NDIMS; i++)
 	    accelVals[i] = gyroVals[i] = 0;
-	tStart = tStop = 0L;
+	tStart = tStop = tStart_ns = tStop_ns = 0L;
 	idx = num_a = num_g = 0;
 
     }
@@ -284,6 +285,7 @@ public class DanceLab extends Activity {
 	registerListeners();
 	prepFileIO();
 	tStart = System.currentTimeMillis();
+	tStart_ns = System.nanoTime();
 	writeMetadataStart();
 	loggingIsOn = true;
 	}
@@ -294,6 +296,7 @@ public class DanceLab extends Activity {
 	mHandlerThread.quit();
 	unregisterListeners();
 	tStop = System.currentTimeMillis();
+	tStop_ns = System.nanoTime();
 	writeMetadataEnd();
 	finalizeFileIO();
     }
@@ -316,7 +319,8 @@ public class DanceLab extends Activity {
     
     public void writeMetadataStart() {
 	try {
-	    outfileBWriterMeta.write("t_i " + Long.toString(tStart));
+	    outfileBWriterMeta.write("t_i " + Long.toString(tStart) 
+				     + " " + Long.toString(tStart_ns));
 	    outfileBWriterMeta.newLine();
 	} catch (IOException e) { }
     }
@@ -331,7 +335,8 @@ public class DanceLab extends Activity {
 	long diffStartStop = tStop - tStart;
 	float msPerSample = diffStartStop/(idx+1);
 	try {
-	    outfileBWriterMeta.write("t_f " + Long.toString(tStop));
+	    outfileBWriterMeta.write("t_f " + Long.toString(tStop)  
+				     + " " + Long.toString(tStop_ns));
 	    outfileBWriterMeta.newLine();
 	    outfileBWriterMeta.write("dt="+Long.toString(diffStartStop)+"; " 
 				 + Float.toString(msPerSample) + " ms per sample");
