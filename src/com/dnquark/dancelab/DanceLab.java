@@ -43,7 +43,10 @@ public class DanceLab extends Activity {
 
 	private static final String TAG = "DanceLab";  
     private static boolean DEBUG_FILENAME = false; 
-
+    
+    private static final int RATE_GYRO = SensorManager.SENSOR_DELAY_NORMAL;
+    // private static final int RATE_ACCEL = SensorManager.SENSOR_DELAY_FASTEST;
+    private static final int RATE_ACCEL = SensorManager.SENSOR_DELAY_NORMAL;
     private boolean appendTimestamps = false;
 	private TextView statusText, fnameText;
 	private CheckBox checkBoxTS;
@@ -88,9 +91,9 @@ public class DanceLab extends Activity {
 	switch (view.getId()) {
 	case R.id.startButton1:
 	    if (logger.isActive()) return;
-	    wl.acquire();
+	    // wl.acquire();
 	    fileManager.makeTsFilename();
-	    soundrec.start();
+	    // soundrec.start();
 	    logger.startLogging();
 	    statusText.setText("recording");	        
 	    displayToast("Initiating recording");
@@ -112,7 +115,7 @@ public class DanceLab extends Activity {
     int stopPressCounter = 0;
     long firstPressMs = 0;
     boolean stoppingMaybe = false;
-    int NUM_STOP_PRESSES = 3;
+    int NUM_STOP_PRESSES = 2;
     int STOP_PRESS_MS = 500;
     public void stopRecordingMaybe() {
 	long now = System.currentTimeMillis();
@@ -131,10 +134,10 @@ public class DanceLab extends Activity {
     }
 
     public void stopRecording() {
-    	if (wl.isHeld())
-    		wl.release();	
+    	// if (wl.isHeld())
+    	// 	wl.release();	
 	logger.stopLogging();
-	soundrec.stop();
+	// soundrec.stop();
 	statusText.setText("stopped; " + logger.getRunInfo());
 	updateFileList();
     }
@@ -198,7 +201,20 @@ public class DanceLab extends Activity {
 	     logger.stopLogging();
 	     soundrec.release();
 	 }	
-	    
+
+	 @Override
+	 protected void onResume() {
+	 super.onResume();
+	 logger.registerListeners();
+	 }
+	 
+	@Override
+	protected void onPause() {
+		// unregister listener
+		super.onPause();
+		logger.unregisterListeners();
+	}
+   
     
     public String getTimestamp() {
         Date dateNow = new Date ();
@@ -282,7 +298,7 @@ public class DanceLab extends Activity {
 		mHandlerThread = new HandlerThread("sensorThread");
 	    mHandlerThread.start();
 	    handler = new Handler(mHandlerThread.getLooper());
-	registerListeners();
+	// registerListeners();
 	prepFileIO();
 	tStart = System.currentTimeMillis();
 	tStart_ns = System.nanoTime();
@@ -294,7 +310,7 @@ public class DanceLab extends Activity {
     	if (!loggingIsOn) return;
 	loggingIsOn = false;
 	mHandlerThread.quit();
-	unregisterListeners();
+	// unregisterListeners();
 	tStop = System.currentTimeMillis();
 	tStop_ns = System.nanoTime();
 	writeMetadataEnd();
@@ -304,13 +320,13 @@ public class DanceLab extends Activity {
     public void registerListeners() {
     	mSensorManager.registerListener(this,
     			mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
-    			SensorManager.SENSOR_DELAY_FASTEST, handler);
+    			RATE_ACCEL, handler);
     	//		    mSensorManager.registerListener(this,
     	//	                mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR),
     	//	                SensorManager.SENSOR_DELAY_FASTEST);
     	mSensorManager.registerListener(this,	
     			mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE),
-					SensorManager.SENSOR_DELAY_NORMAL, handler);
+					RATE_GYRO, handler);
     }
     
     public void unregisterListeners() {
