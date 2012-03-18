@@ -13,7 +13,10 @@ import java.util.Date;
 import java.util.List;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -29,10 +32,14 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.PowerManager;
+import android.os.SystemClock;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 //import android.widget.EditText;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
+import android.widget.Chronometer;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,10 +50,14 @@ public class DanceLab extends Activity {
 
 	private static final String TAG = "DanceLab";  
     private static boolean DEBUG_FILENAME = false; 
-
+    private final int MENU_ACC_RATE=1, MENU_GYRO_RATE=2, MENU_CLEAR=3;
+    private final int GROUP_DEFAULT=0;
+    private static final int DIALOG_ERASE = 0, DIALOG_ACC_RATE = 1, DIALOG_GYRO_RATE = 2;
+    private static final String EOL = String.format("%n");
+    
     private boolean appendTimestamps = false;
 	private TextView statusText, fnameText;
-	private CheckBox checkBoxTS;
+	private Chronometer chronometer;
 	private FileManager fileManager;
 	private DataLogger logger;
     private DLSoundRecorder soundrec;
@@ -62,7 +73,8 @@ public class DanceLab extends Activity {
         setContentView(R.layout.main);
         statusText = (TextView) findViewById(R.id.recordingStatus1);
         fnameText = (TextView) findViewById(R.id.textViewFname1);
-        checkBoxTS = (CheckBox) findViewById(R.id.checkBoxTimestamps1);
+        chronometer = (Chronometer) findViewById(R.id.chronometer1);
+
         fileManager = new FileManager();
 	logger = new DataLogger();
 		soundrec = new DLSoundRecorder();
@@ -70,9 +82,158 @@ public class DanceLab extends Activity {
          pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
          wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, TAG);
 
+         chronometer.setOnChronometerTickListener(
+                 new Chronometer.OnChronometerTickListener(){
+             public void onChronometerTick(Chronometer chr) {
+            	 if (!logger.isActive()) return;
+            	 long ts = SystemClock.uptimeMillis();
+            	 String chrText = chr.getText().toString();
+            	 logger.metadataWrite(new String("chr: " + chrText + " " + Long.toString(ts) + EOL));
+             
+             }}
+               );
+         
         Thread.setDefaultUncaughtExceptionHandler(new CustomExceptionHandler(
                 "/sdcard/dancelab/", null));
       }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+    menu.add(GROUP_DEFAULT, MENU_ACC_RATE, 0, "Acc. samp. rate");
+    menu.add(GROUP_DEFAULT, MENU_GYRO_RATE, 0, "Gyro samp. rate");
+    menu.add(GROUP_DEFAULT, MENU_CLEAR, 0, "Clear Data");
+    return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+    	if (logger.isActive()) return true;
+    switch(item.getItemId()) {
+    case MENU_ACC_RATE:
+	showDialog(DIALOG_ACC_RATE);
+    return true;
+    case MENU_GYRO_RATE:
+	showDialog(DIALOG_GYRO_RATE);
+    return true;
+    case MENU_CLEAR:
+	showDialog(DIALOG_ERASE);
+    return true;
+    }
+    return super.onOptionsItemSelected(item);
+    }
+    
+    private int diagIdxToSensorRate(int i) {
+    	switch(i) {
+    	case 0:
+    		return SensorManager.SENSOR_DELAY_NORMAL;
+    	case 1:	
+    		return SensorManager.SENSOR_DELAY_GAME;
+    	case 2:
+    		return SensorManager.SENSOR_DELAY_FASTEST;
+    	default:
+    		return -1;
+    	}
+    }
+
+    private int sensorRateToDiagIdx(int i) {
+    	switch(i) {
+	case SensorManager.SENSOR_DELAY_NORMAL:
+	    return 0;
+	case SensorManager.SENSOR_DELAY_GAME:
+	    return 1;
+	case SensorManager.SENSOR_DELAY_FASTEST:
+	    return 3;
+    	default:
+	    return -1;
+    	}
+    }
+
+    // private int getSensorDelayVal(String s) {
+    // 	if (s.equals("Normal"))
+    // 		return SensorManager.SENSOR_DELAY_NORMAL;
+    // 	else if (s.equals("Fast"))
+    // 		return SensorManager.SENSOR_DELAY_GAME;
+    // 	else if (s.equals("Max"))
+    // 		return SensorManager.SENSOR_DELAY_FASTEST;
+    // 	else return -1;
+    // }
+    
+    
+    private AlertDialog.Builder setSampRateDialogBuilder(final int sType, final int itemIndex) {
+    	final CharSequence[] items = {"Normal", "Fast", "Max"};
+    	AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    	builder.setTitle("Pick data collection rate");
+    	builder.setSingleChoiceItems(items, itemIndex, new DialogInterface.OnClickListener() {
+    	    public void onClick(DialogInterface dialog, int item) {
+    	        logger.setSensorRate(sType, DanceLab.this.diagIdxToSensorRate(item));
+    	    }
+    	});
+    	return builder;
+    }
+      
+    private AlertDialog.Builder eraseDataDialogBuilder() {
+    	AlertDialog.Builder builder = new AlertDialog.Builder(this);
+	builder.setMessage("Are you sure?")
+	    .setCancelable(false)
+	    .setPositiveButton("Erase all data", new DialogInterface.OnClickListener() {
+		    public void onClick(DialogInterface dialog, int id) {
+			DanceLab.this.clearData();
+		    }
+		})
+	    .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+		    public void onClick(DialogInterface dialog, int id) {
+			dialog.cancel();
+		    }
+		});
+    	return builder;
+    }
+
+    protected Dialog onPrepareDialog(int id) {
+    	Dialog dialog;
+    	AlertDialog.Builder builder = new AlertDialog.Builder(this);
+	int currAccelRate = logger.getSensorRate(Sensor.TYPE_ACCELEROMETER);
+	int currGyroRate = logger.getSensorRate(Sensor.TYPE_GYROSCOPE);
+    	switch(id) {
+    	case DIALOG_ERASE:
+	    dialog = eraseDataDialogBuilder().create();
+	    break;
+    	case DIALOG_ACC_RATE:
+	    dialog = setSampRateDialogBuilder(Sensor.TYPE_ACCELEROMETER, sensorRateToDiagIdx(currAccelRate)).create();
+	    break;
+    	case DIALOG_GYRO_RATE:
+	    dialog = setSampRateDialogBuilder(Sensor.TYPE_GYROSCOPE, sensorRateToDiagIdx(currGyroRate)).create();
+	    break;
+	default:
+	    dialog = null;
+       	}
+    	return dialog;
+    }
+
+
+    protected Dialog onCreateDialog(int id) {
+    	Dialog dialog;
+    	AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    	switch(id) {
+    	case DIALOG_ERASE:
+	    dialog = eraseDataDialogBuilder().create();
+	    break;
+    	case DIALOG_ACC_RATE:
+	    dialog = setSampRateDialogBuilder(Sensor.TYPE_ACCELEROMETER, 2).create();
+	    break;
+    	case DIALOG_GYRO_RATE:
+	    dialog = setSampRateDialogBuilder(Sensor.TYPE_GYROSCOPE, 0).create();
+	    break;
+	default:
+	    dialog = null;
+       	}
+    	return dialog;
+    }
+       
+    private void clearData() {
+    	fileManager.deleteFiles();
+    	updateFileList();
+	    displayToast("Erased all data");
+    }
     /*
     @Override
     protected void onResume() {
@@ -92,6 +253,8 @@ public class DanceLab extends Activity {
 	    fileManager.makeTsFilename();
 	    soundrec.start();
 	    logger.startLogging();
+	    chronometer.setBase(SystemClock.elapsedRealtime());
+	    chronometer.start();
 	    statusText.setText("recording");	        
 	    displayToast("Initiating recording");
 	    break;
@@ -101,11 +264,6 @@ public class DanceLab extends Activity {
 	case R.id.beepButton1:
 	    beep();
 	    break;
-	case R.id.checkBoxTimestamps1:
-	    if (((CheckBox)view).isChecked()) 
-		appendTimestamps = true;
-	    else
-            	appendTimestamps = false;
 	}
     }
 
@@ -113,9 +271,9 @@ public class DanceLab extends Activity {
     long firstPressMs = 0;
     boolean stoppingMaybe = false;
     int NUM_STOP_PRESSES = 3;
-    int STOP_PRESS_MS = 500;
+    int STOP_PRESS_MS = 800;
     public void stopRecordingMaybe() {
-	long now = System.currentTimeMillis();
+	long now = SystemClock.uptimeMillis();
 	if (!stoppingMaybe) {
 	    stopPressCounter = 1;
 	    firstPressMs = now;
@@ -135,6 +293,7 @@ public class DanceLab extends Activity {
     		wl.release();	
 	logger.stopLogging();
 	soundrec.stop();
+	chronometer.stop();
 	statusText.setText("stopped; " + logger.getRunInfo());
 	updateFileList();
     }
@@ -148,7 +307,7 @@ public class DanceLab extends Activity {
 	    mPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             public void onCompletion(MediaPlayer mp) {
 		if (logger.isActive())
-		    logger.metadataWrite("beep_end " + Long.toString(System.currentTimeMillis()) 
+		    logger.metadataWrite("beep_end " + Long.toString(SystemClock.uptimeMillis()) 
 					 + " " + Long.toString(System.nanoTime()) + eol);
         	mPlayer.stop();
         	mPlayer.release();
@@ -156,7 +315,7 @@ public class DanceLab extends Activity {
             }
         });
 	    if (logger.isActive())
-		logger.metadataWrite("beep_start " + Long.toString(System.currentTimeMillis()) 
+		logger.metadataWrite("beep_start " + Long.toString(SystemClock.uptimeMillis()) 
 				     + " " + Long.toString(System.nanoTime()) + eol);
 	    mPlayer.start();
 	    isBeeping = true;
@@ -243,8 +402,21 @@ public class DanceLab extends Activity {
 	    		filenames.add(files[i].getName());
 	    	return filenames;
 	    }
-	    	
-	   
+	    
+	    public void deleteFiles() {
+	    	for (File f : storeDir.listFiles())
+	    		deleteRecursive(f);
+	    }
+	    
+	    private void deleteRecursive(File fileOrDirectory) {
+	        if (fileOrDirectory.isDirectory())
+	            for (File child : fileOrDirectory.listFiles())
+	                deleteRecursive(child);
+
+	        fileOrDirectory.delete();
+	    }
+
+	    
 	}
 
 	 
@@ -254,6 +426,7 @@ public class DanceLab extends Activity {
     private static final int NDIMS = 3;
     private float[] accelVals, gyroVals;
     private boolean loggingIsOn = false;
+    private int accelSensorRate = SensorManager.SENSOR_DELAY_FASTEST, gyroSensorRate = SensorManager.SENSOR_DELAY_NORMAL;
     
     private SensorManager mSensorManager;
 	private HandlerThread mHandlerThread;
@@ -284,7 +457,7 @@ public class DanceLab extends Activity {
 	    handler = new Handler(mHandlerThread.getLooper());
 	registerListeners();
 	prepFileIO();
-	tStart = System.currentTimeMillis();
+	tStart = SystemClock.uptimeMillis();
 	tStart_ns = System.nanoTime();
 	writeMetadataStart();
 	loggingIsOn = true;
@@ -295,25 +468,50 @@ public class DanceLab extends Activity {
 	loggingIsOn = false;
 	mHandlerThread.quit();
 	unregisterListeners();
-	tStop = System.currentTimeMillis();
+	tStop = SystemClock.uptimeMillis();
 	tStop_ns = System.nanoTime();
 	writeMetadataEnd();
 	finalizeFileIO();
     }
-
+    
+    public void setSensorRate(int sensorType, int r) {
+    	switch(sensorType) {
+    	case Sensor.TYPE_ACCELEROMETER:
+        	accelSensorRate = r;
+    		break;
+    	case Sensor.TYPE_ROTATION_VECTOR:
+    	case Sensor.TYPE_GYROSCOPE:
+        	gyroSensorRate = r;
+        	break;
+    	}
+    }
+    public int getSensorRate(int sensorType) {
+    	switch(sensorType) {
+    	case Sensor.TYPE_ACCELEROMETER:
+        	return accelSensorRate;
+     	case Sensor.TYPE_ROTATION_VECTOR:
+    	case Sensor.TYPE_GYROSCOPE:
+        	return gyroSensorRate;
+        default:
+        	return 0;
+       	}
+    }
+    
     public void registerListeners() {
+    	//displayToast("Reg:" + Integer.toString(accelSensorRate) + " " + Integer.toString(gyroSensorRate));
     	mSensorManager.registerListener(this,
     			mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
-    			SensorManager.SENSOR_DELAY_FASTEST, handler);
+    			accelSensorRate, handler);
     	//		    mSensorManager.registerListener(this,
     	//	                mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR),
     	//	                SensorManager.SENSOR_DELAY_FASTEST);
     	mSensorManager.registerListener(this,	
     			mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE),
-					SensorManager.SENSOR_DELAY_NORMAL, handler);
+					gyroSensorRate, handler);
     }
     
     public void unregisterListeners() {
+	//displayToast("UNREG");
     	mSensorManager.unregisterListener(this);
     }
     
@@ -371,7 +569,7 @@ public class DanceLab extends Activity {
 		fnameText.setText(outfile.getPath());
 		outfileBWriter = new BufferedWriter(new FileWriter(outfile));
 		outfileBWriterMeta = new BufferedWriter(new FileWriter(outfileMeta));
-		fnameText.setText(" dir: " + storeDir.getPath());
+		fnameText.setText(storeDir.getPath());
 	    } else {
 		fnameText.setText("dir not writable: " + storeDir.getPath());
 	    }
