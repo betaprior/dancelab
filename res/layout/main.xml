@@ -22,7 +22,7 @@
 <LinearLayout android:layout_height="wrap_content" android:layout_width="fill_parent" android:id="@+id/linearLayout1">
 <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/startButton1" android:text="Start recording" android:onClick="myClickHandler"></Button>
 <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/stopButton1" android:text="Press 3x to stop" android:onClick="myClickHandler"></Button>
-<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/beepButton1" android:text="Beep" android:onClick="myClickHandler"></Button>
+<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/ntpButton1" android:text="NTP" android:onClick="myClickHandler"></Button>
 
 </LinearLayout>
 <TextView android:text="" android:id="@+id/recordingStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
