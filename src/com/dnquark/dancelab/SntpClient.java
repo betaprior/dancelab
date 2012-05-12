@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package android.net;
+package com.dnquark.dancelab;
 
 import android.os.SystemClock;
 import android.util.Config;
@@ -33,7 +33,7 @@ import java.net.InetAddress;
  * Sample usage:
  * <pre>SntpClient client = new SntpClient();
  * if (client.requestTime("time.foo.com")) {
- *     long now = client.getNtpTime() + SystemClock.elapsedRealtime() - client.getNtpTimeReference();
+ *     long now = client.getNtpTime() + System.nanoTime() / 1000000 - client.getNtpTimeReference();
  * }
  * </pre>
  */
@@ -64,6 +64,9 @@ public class SntpClient
     // round trip time in milliseconds
     private long mRoundTripTime;
 
+    // system timestamp corresponding to mNtpTime (System.currentTimeMillis())
+    private long mNtpTimeRefSystemTime;
+
     /**
      * Sends an SNTP request to the given host and processes the response.
      *
@@ -86,7 +89,8 @@ public class SntpClient
 
             // get current time and write it to the request packet
             long requestTime = System.currentTimeMillis();
-            long requestTicks = SystemClock.elapsedRealtime();
+            // long requestTicks = SystemClock.elapsedRealtime();
+            long requestTicks = System.nanoTime();
             writeTimeStamp(buffer, TRANSMIT_TIME_OFFSET, requestTime);
 
             socket.send(request);
@@ -94,8 +98,12 @@ public class SntpClient
             // read the response
             DatagramPacket response = new DatagramPacket(buffer, buffer.length);
             socket.receive(response);
-            long responseTicks = SystemClock.elapsedRealtime();
-            long responseTime = requestTime + (responseTicks - requestTicks);
+            // long responseTicks = SystemClock.elapsedRealtime();
+            long responseTicks = System.nanoTime();
+            mNtpTimeRefSystemTime = System.currentTimeMillis();
+
+            // long responseTime = requestTime + (responseTicks - requestTicks);
+            long responseTime = requestTime + (responseTicks - requestTicks) / 1000000;
             socket.close();
 
             // extract the results
@@ -118,7 +126,8 @@ public class SntpClient
             // save our results - use the times on this side of the network latency
             // (response rather than request time)
             mNtpTime = responseTime + clockOffset;
-            mNtpTimeReference = responseTicks;
+            // mNtpTimeReference = responseTicks;
+            mNtpTimeReference = responseTicks / 1000000;
             mRoundTripTime = roundTripTime;
         } catch (Exception e) {
             if (Config.LOGD) Log.d(TAG, "request time failed: " + e);
@@ -154,6 +163,16 @@ public class SntpClient
      */
     public long getRoundTripTime() {
         return mRoundTripTime;
+    }
+
+    /**
+     * Returns system clock value (System.currentTimeMillis()) corresponding to
+     * the NTP time
+     *
+     * @return value of System.currentTimeMillis() corresponding to the NTP time
+     */
+    public long getNtpTimeCurTimeReference() {
+        return mNtpTimeRefSystemTime;
     }
 
     /**
