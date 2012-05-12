@@ -26,14 +26,15 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
-import android.net.SntpClient;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -55,9 +56,10 @@ public class DanceLab extends Activity {
     private final int GROUP_DEFAULT=0;
     private static final int DIALOG_ERASE = 0, DIALOG_ACC_RATE = 1, DIALOG_GYRO_RATE = 2;
     private static final String EOL = String.format("%n");
-    
+    private static String DEVICE_ID;
+
     private boolean appendTimestamps = false;
-    private TextView statusText, fnameText;
+    private TextView statusText, fnameText, ntpStatusText;
     private Chronometer chronometer;
     private FileManager fileManager;
     private DataLogger logger;
@@ -67,6 +69,7 @@ public class DanceLab extends Activity {
     private PowerManager.WakeLock wl;
     
     private SntpClient ntpClient;
+    private long ntpOffset = 0;
 
     /** Called when the activity is first created. */
     @Override
@@ -76,8 +79,12 @@ public class DanceLab extends Activity {
         setContentView(R.layout.main);
         statusText = (TextView) findViewById(R.id.recordingStatus1);
         fnameText = (TextView) findViewById(R.id.textViewFname1);
+        ntpStatusText = (TextView) findViewById(R.id.textViewStatusNtp);
+        
+
         chronometer = (Chronometer) findViewById(R.id.chronometer1);
 
+        getDeviceId();
         fileManager = new FileManager();
         logger = new DataLogger();
         soundrec = new DLSoundRecorder();
@@ -97,9 +104,12 @@ public class DanceLab extends Activity {
                     }}
                 );
          
+        new GetNtpTime().execute();
+
         Thread.setDefaultUncaughtExceptionHandler(new CustomExceptionHandler(
                         "/sdcard/dancelab/", null));
     }
+
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -150,6 +160,18 @@ public class DanceLab extends Activity {
         default:
             return -1;
         }
+    }
+
+    private void getDeviceId() {
+        String a_id = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        Log.d(TAG, "AID: " + a_id);
+        char id[] = {'0', '0'};
+        for (int i = 0; i < id.length; i++) {
+            char c = a_id.charAt(i);
+            boolean is_digit = ((int)(c - 'A') < 0);
+            id[i] = is_digit ? (char)((c - '0') + 'g') : c;
+        }
+        DEVICE_ID = String.valueOf(id);
     }
 
     // private int getSensorDelayVal(String s) {
@@ -303,33 +325,43 @@ public class DanceLab extends Activity {
     }
    
     class GetNtpTime extends AsyncTask<Void, Void, Boolean> {
-        private String NTP_SERVER = "0.pool.ntp.org";
+        private String NTP_SERVER = "pool.ntp.org";
         private int NTP_TIMEOUT_MS = 2000;
+        private int RETRIES = 3;
+        private int RETRY_INTERVAL = 500;
         
         @Override
         protected Boolean doInBackground(Void... v) { //
-            long ntptime, ntptimeref;
-            if (ntpClient.requestTime(NTP_SERVER, NTP_TIMEOUT_MS)) {
-                long now = ntpClient.getNtpTime() + SystemClock.elapsedRealtime() - ntpClient.getNtpTimeReference();
-                Log.d(TAG, "NTP Time: " + ntpClient.getNtpTime());
-                Log.d(TAG, "NTP Timeref: " + ntpClient.getNtpTimeReference());
-                return true;
-            } else {
-                return false;
+            // long ntptime, ntptimeref;
+            for (int i = 0; i < RETRIES; i++) {
+                if (ntpClient.requestTime(NTP_SERVER, NTP_TIMEOUT_MS)) {
+                    ntpOffset = ntpClient.getClockOffset();
+                    // Log.d(TAG, "Nano->ms time: " + Long.toString(System.nanoTime() / 1000000));
+                    // Log.d(TAG, "NTPRef: " + Long.toString(ntpClient.getNtpTimeReference()));
+                    return true;
+                } else {
+                    try {
+                        Thread.sleep(RETRY_INTERVAL);
+                    } catch (InterruptedException e) { }
+                }
             }
+            return false;
         }
             
         @Override
         protected void onProgressUpdate(Void... v) { 
             super.onProgressUpdate(v);
         }
-        // Called once the background activity has completed
+
         @Override
         protected void onPostExecute(Boolean success) { 
-            if (success)  
-                statusText.setText("NTP Time: " + ntpClient.getNtpTime());
-            else
+            if (success) {
+                ntpStatusText.setText(getResources().getString(R.string.statusFieldNtp) 
+                        + " " + Long.toString(ntpOffset) + " ms");
+            } else {
+                ntpStatusText.setText(getResources().getString(R.string.statusFieldNtp) + " unavailable");
                 displayToast("Failed to get time from " + NTP_SERVER);
+            }
         }
 
     }
@@ -398,7 +430,7 @@ public class DanceLab extends Activity {
         }
         public File getDataDir() { return storeDir; } 
         public String makeTsFilename() {
-            currentFilename = SAVE_FILENAME_BASE_TS + "-" + getTimestamp();
+            currentFilename = SAVE_FILENAME_BASE_TS + "-" + DEVICE_ID  + "-" + getTimestamp();
             if (DanceLab.DEBUG_FILENAME) currentFilename = "test";
             return currentFilename;
         }
@@ -438,19 +470,20 @@ public class DanceLab extends Activity {
         private static final String TAG = "DanceLabLogger";
         private String metaFilename, saveFilename = FileManager.SAVE_FILENAME_BASE;
         private static final int NDIMS = 3;
+        private static final int NANO_IN_MILLI = 1000000;
         private float[] accelVals, gyroVals;
         private boolean loggingIsOn = false;
         private int accelSensorRate = SensorManager.SENSOR_DELAY_FASTEST, gyroSensorRate = SensorManager.SENSOR_DELAY_NORMAL;
     
         private SensorManager mSensorManager;
-        private HandlerThread mHandlerThread;
-        private Handler handler;
+        // private HandlerThread mHandlerThread;
+        // private Handler handler;
 
         private int idx, num_a, num_g;
         private File outfile, outfileMeta;
         private BufferedWriter outfileBWriter, outfileBWriterMeta;
-        private Long tStart, tStop;
-        private Long tStart_ns, tStop_ns;
+        private Long tStart, tStop, tStart_epoch, tStop_epoch, tStart_ns, tStop_ns;
+        private Long eventTimestampOffset;
     
         public DataLogger() { 
             mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -466,13 +499,15 @@ public class DanceLab extends Activity {
         public boolean isActive() { return loggingIsOn; }
 
         protected void startLogging() {
-            mHandlerThread = new HandlerThread("sensorThread");
-            mHandlerThread.start();
-            handler = new Handler(mHandlerThread.getLooper());
+            // mHandlerThread = new HandlerThread("sensorThread");
+            // mHandlerThread.start();
+            // handler = new Handler(mHandlerThread.getLooper());
             registerListeners();
             prepFileIO();
             tStart = SystemClock.uptimeMillis();
             tStart_ns = System.nanoTime();
+            tStart_epoch = System.currentTimeMillis();
+            setEventTimestampOffset();
             writeMetadataStart();
             loggingIsOn = true;
         }
@@ -480,10 +515,11 @@ public class DanceLab extends Activity {
         protected void stopLogging() {
             if (!loggingIsOn) return;
             loggingIsOn = false;
-            mHandlerThread.quit();
+            // mHandlerThread.quit();
             unregisterListeners();
             tStop = SystemClock.uptimeMillis();
             tStop_ns = System.nanoTime();
+            tStop_epoch = System.currentTimeMillis();
             writeMetadataEnd();
             finalizeFileIO();
         }
@@ -515,13 +551,13 @@ public class DanceLab extends Activity {
             //displayToast("Reg:" + Integer.toString(accelSensorRate) + " " + Integer.toString(gyroSensorRate));
             mSensorManager.registerListener(this,
                     mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
-                    accelSensorRate, handler);
+                    accelSensorRate);
             //      mSensorManager.registerListener(this,
             //                 mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR),
             //                 SensorManager.SENSOR_DELAY_FASTEST);
             mSensorManager.registerListener(this, 
                     mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE),
-                    gyroSensorRate, handler);
+                    gyroSensorRate);
         }
     
         public void unregisterListeners() {
@@ -541,6 +577,12 @@ public class DanceLab extends Activity {
             try {
                 outfileBWriterMeta.write(s);
             } catch (IOException e) { }
+        }
+
+        private void setEventTimestampOffset() {
+            eventTimestampOffset = ntpClient.isValid() ? 
+                (ntpClient.getNtpTime() - ntpClient.getNtpTimeReference())
+                : (tStart_epoch - tStart_ns / NANO_IN_MILLI);
         }
  
         public void writeMetadataEnd() {
@@ -619,11 +661,15 @@ public class DanceLab extends Activity {
     
         private void writeValues(SensorEvent event) {
             float accelMagnitude;
+            long time = event.timestamp / NANO_IN_MILLI + eventTimestampOffset;
             int i;
             try {
+                // outfileBWriter.write("TIMESTAMP TESTS:" + Long.toString(event.timestamp) + " " + Long.toString(System.currentTimeMillis()) + " " + System.nanoTime() + " " + SystemClock.elapsedRealtime() + 
+                        // " " + Long.toString(ntpClient.getNtpTimeReference()) + " " +  Long.toString(time));
+                // outfileBWriter.newLine();
                 outfileBWriter.write(Integer.toString(idx++) + ","
                         + Integer.toString(event.sensor.getType()) + ","
-                        + Long.toString(event.timestamp) + ",");
+                        + Long.toString(time) + ",");
                 accelMagnitude = 0;
                 for (i = 0; i < NDIMS; i++) { 
                     outfileBWriter.write(Float.toString(accelVals[i]) + ",");

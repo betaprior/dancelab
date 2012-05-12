@@ -54,6 +54,8 @@ public class SntpClient
     // Number of seconds between Jan 1, 1900 and Jan 1, 1970
     // 70 years plus 17 leap days
     private static final long OFFSET_1900_TO_1970 = ((365L * 70L) + 17L) * 24L * 60L * 60L;
+    private static final int NANO_IN_MILLI = 1000000;
+
 
     // system time computed from NTP server response
     private long mNtpTime;
@@ -66,7 +68,13 @@ public class SntpClient
 
     // system timestamp corresponding to mNtpTime (System.currentTimeMillis())
     private long mNtpTimeRefSystemTime;
-
+    
+    // computed clock offset between local clock and NTP reference
+    private long clockOffset;
+    
+    // set to the same value that requestTime returns (to later check if the client contains valid timing)
+    private boolean isValid;
+    
     /**
      * Sends an SNTP request to the given host and processes the response.
      *
@@ -103,7 +111,7 @@ public class SntpClient
             mNtpTimeRefSystemTime = System.currentTimeMillis();
 
             // long responseTime = requestTime + (responseTicks - requestTicks);
-            long responseTime = requestTime + (responseTicks - requestTicks) / 1000000;
+            long responseTime = requestTime + (responseTicks - requestTicks) / NANO_IN_MILLI;
             socket.close();
 
             // extract the results
@@ -111,6 +119,7 @@ public class SntpClient
             long receiveTime = readTimeStamp(buffer, RECEIVE_TIME_OFFSET);
             long transmitTime = readTimeStamp(buffer, TRANSMIT_TIME_OFFSET);
             long roundTripTime = responseTicks - requestTicks - (transmitTime - receiveTime);
+            // assuming one-way /transmit/ delay is symmetric and clocks are out of sync by /skew/ ms:
             // receiveTime = originateTime + transit + skew
             // responseTime = transmitTime + transit - skew
             // clockOffset = ((receiveTime - originateTime) + (transmitTime - responseTime))/2
@@ -119,7 +128,9 @@ public class SntpClient
             //             = ((transit + skew) + (transmitTime - transmitTime - transit + skew))/2
             //             = (transit + skew - transit + skew)/2
             //             = (2 * skew)/2 = skew
-            long clockOffset = ((receiveTime - originateTime) + (transmitTime - responseTime))/2;
+            // NB: receiveTime, transmitTime are timestamps of the NTP server
+            //     originateTime, responseTime are local timestamps
+            clockOffset = ((receiveTime - originateTime) + (transmitTime - responseTime))/2;
             // if (Config.LOGD) Log.d(TAG, "round trip: " + roundTripTime + " ms");
             // if (Config.LOGD) Log.d(TAG, "clock offset: " + clockOffset + " ms");
 
@@ -127,14 +138,15 @@ public class SntpClient
             // (response rather than request time)
             mNtpTime = responseTime + clockOffset;
             // mNtpTimeReference = responseTicks;
-            mNtpTimeReference = responseTicks / 1000000;
+            mNtpTimeReference = responseTicks / NANO_IN_MILLI;
             mRoundTripTime = roundTripTime;
         } catch (Exception e) {
             if (Config.LOGD) Log.d(TAG, "request time failed: " + e);
-            return false;
+            isValid = false;
+            return isValid;
         }
-
-        return true;
+        isValid = true;
+        return isValid;
     }
 
     /**
@@ -173,6 +185,22 @@ public class SntpClient
      */
     public long getNtpTimeCurTimeReference() {
         return mNtpTimeRefSystemTime;
+    }
+
+    /**
+     * Returns the computed clock offset between NTP and local server
+     *
+     * @return computed clock offset
+     */
+    public long getClockOffset() {
+        return clockOffset;
+    }
+    
+    /**
+     * Returns true if NTP request succeeded
+     */
+    public boolean isValid() {
+        return isValid;
     }
 
     /**

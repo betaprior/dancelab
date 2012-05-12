@@ -2,27 +2,35 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent" android:orientation="vertical">
+
 <TextView  
     android:layout_width="fill_parent" 
     android:layout_height="wrap_content" 
-    android:text="Dance Lab v. 0.2"
+    android:text="@string/titleDanceLab"
     android:id="@+id/titleText1"/>
 
-<TextView android:id="@+id/textViewStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Recording to:"></TextView>
+<TextView android:id="@+id/textViewStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/statusFieldRecordingTo"></TextView>
+
 <TextView android:text="" android:id="@+id/textViewFname1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
+
+<TextView
+    android:id="@+id/textViewStatusNtp"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="@string/statusFieldNtp" />
 
 <Chronometer
     android:id="@+id/chronometer1"
     android:layout_width="match_parent"
     android:textSize="65dp"
     android:layout_height="75dp"
-    android:text="Chronometer" />
+    android:text="@string/chronometer" />
 
 
 <LinearLayout android:layout_height="wrap_content" android:layout_width="fill_parent" android:id="@+id/linearLayout1">
-<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/startButton1" android:text="Start recording" android:onClick="myClickHandler"></Button>
-<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/stopButton1" android:text="Press 3x to stop" android:onClick="myClickHandler"></Button>
-<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/ntpButton1" android:text="NTP" android:onClick="myClickHandler"></Button>
+<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/startButton1" android:text="@string/btnStartRecording" android:onClick="myClickHandler"></Button>
+<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/stopButton1" android:text="@string/btnStopRecording" android:onClick="myClickHandler"></Button>
+<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/ntpButton1" android:text="@string/btnNtp" android:onClick="myClickHandler"></Button>
 
 </LinearLayout>
 <TextView android:text="" android:id="@+id/recordingStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
