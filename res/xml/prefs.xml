@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" android:key="@string/titleDancelabPrefs"> 
+ 	<PreferenceCategory 
+		android:title="Sensor settings">
+    
+    <ListPreference
+		android:key="prefsAccelSamplingRate"
+		android:title="Accelerometer sampling rate"
+		android:defaultValue="Max"
+		android:entries="@array/sensorRateChoices"
+		android:entryValues="@array/sensorRateChoices"
+		/>
+    <ListPreference
+		android:key="prefsGyroSamplingRate"
+		android:title="Gyroscope sampling rate"
+		android:defaultValue="Normal"
+		android:entries="@array/sensorRateChoices"
+		android:entryValues="@array/sensorRateChoices"
+		/>
+    </PreferenceCategory>
+	
+	<PreferenceCategory 
+		android:title="Peak detector settings">
+    <EditTextPreference
+	android:key="prefsPeakDetectorThreshold"
+	android:title="Shock detection threshold"
+	android:defaultValue="11.4"
+	android:inputType="number"
+	android:summary="Shock detection threshold for sync (m/s^2)" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

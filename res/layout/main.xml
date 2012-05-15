@@ -9,9 +9,7 @@
     android:text="@string/titleDanceLab"
     android:id="@+id/titleText1"/>
 
-<TextView android:id="@+id/textViewStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/statusFieldRecordingTo"></TextView>
-
-<TextView android:text="" android:id="@+id/textViewFname1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
+<TextView android:id="@+id/textViewStatusRecFile" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/statusFieldRecordingTo"></TextView>
 
 <TextView
     android:id="@+id/textViewStatusNtp"
