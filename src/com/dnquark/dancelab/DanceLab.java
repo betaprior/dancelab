@@ -36,12 +36,14 @@ import android.view.MenuItem;
 import android.view.View;
 //import android.widget.EditText;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.Chronometer;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.util.Log;
+import android.graphics.PorterDuff;
 
 
 public class DanceLab extends Activity implements OnSharedPreferenceChangeListener {
@@ -56,9 +58,10 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     private static final String EOL = String.format("%n");
 
     private TextView statusText;
-    //TextView fnameText;
     private TextView recordingFileText;
     private TextView ntpStatusText;
+    private Button syncButton;
+    
     private Chronometer chronometer;
     private DataLogger logger;
     private DLSoundRecorder soundrec;
@@ -97,7 +100,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         recordingFileText = (TextView) findViewById(R.id.textViewStatusRecFile);
         ntpStatusText = (TextView) findViewById(R.id.textViewStatusNtp);
         setRecordingStatusText("Recording to: " + fileManager.getDataDir().getPath());
-
+        syncButton = (Button) findViewById(R.id.syncButton1);
+                
         chronometer = (Chronometer) findViewById(R.id.chronometer1);
         initializeChronometer();
         
@@ -167,7 +171,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
  
     private void getDeviceId() {
         String a_id = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-        Log.d(TAG, "AID: " + a_id);
+        // Log.d(TAG, "AID: " + a_id);
         char id[] = {'0', '0'};
         for (int i = 0; i < id.length; i++) {
             char c = a_id.charAt(i);
@@ -243,24 +247,45 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     public void myClickHandler(View view) {
         switch (view.getId()) {
         case R.id.startButton1:
-            if (logger.isActive()) return;
-            wl.acquire();
-            fileManager.makeTsFilename();
-            soundrec.start();
-            logger.startLogging();
-            chronometer.setBase(SystemClock.elapsedRealtime());
-            chronometer.start();
-            statusText.setText("recording");         
-            displayToast("Initiating recording");
+            startRecording();
             break;
         case R.id.stopButton1:
             stopRecordingMaybe();
             break;
-        case R.id.ntpButton1:
-            new GetNtpTime().execute();
+        case R.id.syncButton1:
+            startRecording();
+            startShockSensorSync();
             break;
         }
     }
+    
+    private void startRecording() {
+        if (logger.isActive()) return;
+        wl.acquire();
+        fileManager.makeTsFilename();
+        soundrec.start();
+        logger.startLogging();
+        chronometer.setBase(SystemClock.elapsedRealtime());
+        chronometer.start();
+        statusText.setText("recording");         
+        displayToast("Initiating recording");
+        syncButton.setEnabled(false);
+    }
+    
+    private void startShockSensorSync() {
+        if (!logger.isActive()) return;
+        logger.setPeakDetectorEnabled(true);
+        syncButton.getBackground().setColorFilter(0xFFFF0000, PorterDuff.Mode.MULTIPLY);
+    }
+   
+    public void finalizeShockSensorSync() {
+        logger.setPeakDetectorEnabled(false);
+        Log.d(TAG, "Setting button to green");
+        syncButton.setEnabled(true);
+        syncButton.getBackground().setColorFilter(0xFF00FF00, PorterDuff.Mode.MULTIPLY);
+        syncButton.setEnabled(false);
+    }
+    
 
     int stopPressCounter = 0;
     long firstPressMs = 0;
@@ -291,6 +316,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         chronometer.stop();
         statusText.setText("stopped; " + logger.getRunInfo());
         updateFileList();
+        syncButton.setEnabled(true);
+        syncButton.getBackground().setColorFilter(null);
     }
    
     class GetNtpTime extends AsyncTask<Void, Void, Boolean> {

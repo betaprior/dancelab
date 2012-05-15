@@ -28,7 +28,7 @@
 <LinearLayout android:layout_height="wrap_content" android:layout_width="fill_parent" android:id="@+id/linearLayout1">
 <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/startButton1" android:text="@string/btnStartRecording" android:onClick="myClickHandler"></Button>
 <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/stopButton1" android:text="@string/btnStopRecording" android:onClick="myClickHandler"></Button>
-<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/ntpButton1" android:text="@string/btnNtp" android:onClick="myClickHandler"></Button>
+<Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/syncButton1" android:text="@string/btnPeakDet" android:onClick="myClickHandler"></Button>
 
 </LinearLayout>
 <TextView android:text="" android:id="@+id/recordingStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>

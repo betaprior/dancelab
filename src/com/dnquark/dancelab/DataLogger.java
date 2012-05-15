@@ -10,6 +10,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Message;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -18,28 +19,30 @@ class DataLogger implements SensorEventListener {
     /**
      * 
      */
-    private final DanceLab danceLab;
-    private static final String TAG = "DanceLabLogger";
+    final DanceLab danceLab;
+    private static final String TAG = "DanceLab DataLogger";
+    private static final int MSG_PEAKDET_DATAPOINT = 1;
     private String metaFilename, saveFilename = FileManager.SAVE_FILENAME_BASE;
     private static final int NDIMS = 3;
     private static final int NANO_IN_MILLI = 1000000;
     private float[] accelVals, gyroVals;
-    private boolean loggingIsOn = false;
+    private float accelMagnitude;
+    private boolean loggingIsOn = false, peakDetectionIsOn = false;
     private int accelSensorRate = SensorManager.SENSOR_DELAY_FASTEST, gyroSensorRate = SensorManager.SENSOR_DELAY_NORMAL;
 
     private SensorManager mSensorManager;
-    // private HandlerThread mHandlerThread;
-    // private Handler handler;
+    private PeakDetector peakDet;
 
     private int idx, num_a, num_g;
     private File outfile, outfileMeta;
     private BufferedWriter outfileBWriter, outfileBWriterMeta;
     private Long tStart, tStop, tStart_epoch, tStop_epoch, tStart_ns, tStop_ns;
-    private Long eventTimestampOffset;
+    private Long eventTimestampOffset, eventTime;
 
     public DataLogger(DanceLab danceLab) { 
         this.danceLab = danceLab;
         mSensorManager = (SensorManager) this.danceLab.getSystemService(Context.SENSOR_SERVICE);
+        peakDet = new PeakDetector(danceLab);
         accelVals = new float[NDIMS];
         gyroVals = new float[NDIMS];
         for (int i = 0; i < NDIMS; i++)
@@ -52,9 +55,6 @@ class DataLogger implements SensorEventListener {
     public boolean isActive() { return loggingIsOn; }
 
     protected void startLogging() {
-        // mHandlerThread = new HandlerThread("sensorThread");
-        // mHandlerThread.start();
-        // handler = new Handler(mHandlerThread.getLooper());
         registerListeners();
         prepFileIO();
         tStart = SystemClock.uptimeMillis();
@@ -68,7 +68,6 @@ class DataLogger implements SensorEventListener {
     protected void stopLogging() {
         if (!loggingIsOn) return;
         loggingIsOn = false;
-        // mHandlerThread.quit();
         unregisterListeners();
         tStop = SystemClock.uptimeMillis();
         tStop_ns = System.nanoTime();
@@ -189,11 +188,18 @@ class DataLogger implements SensorEventListener {
     public void onSensorChanged(SensorEvent event) {
         // Log.d(TAG, "idx = " + idx + "sensor: " + event.sensor + ", x: " + event.values[0] + ", y: " + event.values[1] + ", z: " + event.values[2]);
         synchronized (this) {     
+            eventTime = event.timestamp / NANO_IN_MILLI + eventTimestampOffset;
             switch (event.sensor.getType()) {
             case Sensor.TYPE_ACCELEROMETER:
                 num_a++;
-                for (int i = 0; i < NDIMS; i++)
+                accelMagnitude = 0;
+                for (int i = 0; i < NDIMS; i++) {
                     accelVals[i] = event.values[i];
+                    accelMagnitude += accelVals[i] * accelVals[i];
+                }
+                accelMagnitude = (float) Math.sqrt(accelMagnitude);
+                if (peakDetectionIsOn)
+                    passToPeakDetector();
                 break;
             case Sensor.TYPE_ROTATION_VECTOR:
             case Sensor.TYPE_GYROSCOPE:
@@ -208,12 +214,26 @@ class DataLogger implements SensorEventListener {
                 writeValues(event);
         }
     }
-
+    
+    public void setPeakDetectorEnabled(boolean pdSwitch) {
+        peakDetectionIsOn = pdSwitch;
+        if (pdSwitch)
+            peakDet.init();
+        else
+            peakDet.stop();
+    }
+    
+    public void passToPeakDetector() {
+        // Log.d(TAG, "Sending message");
+        PeakDetector.Datapoint data = new PeakDetector.Datapoint(eventTime, accelMagnitude);
+        peakDet.getHandler()
+            .obtainMessage(MSG_PEAKDET_DATAPOINT, data)
+            .sendToTarget();
+    }
+    
     public void onAccuracyChanged(Sensor sensor, int accuracy) {  } 
 
     private void writeValues(SensorEvent event) {
-        float accelMagnitude;
-        long time = event.timestamp / NANO_IN_MILLI + eventTimestampOffset;
         int i;
         try {
             // outfileBWriter.write("TIMESTAMP TESTS:" + Long.toString(event.timestamp) + " " + Long.toString(System.currentTimeMillis()) + " " + System.nanoTime() + " " + SystemClock.elapsedRealtime() + 
@@ -221,13 +241,9 @@ class DataLogger implements SensorEventListener {
             // outfileBWriter.newLine();
             outfileBWriter.write(Integer.toString(idx++) + ","
                     + Integer.toString(event.sensor.getType()) + ","
-                    + Long.toString(time) + ",");
-            accelMagnitude = 0;
-            for (i = 0; i < NDIMS; i++) { 
+                    + Long.toString(eventTime) + ",");
+            for (i = 0; i < NDIMS; i++)
                 outfileBWriter.write(Float.toString(accelVals[i]) + ",");
-                accelMagnitude += accelVals[i] * accelVals[i];
-            }
-            accelMagnitude = (float) Math.sqrt(accelMagnitude);
             outfileBWriter.write(Float.toString(accelMagnitude) + ",");
             for (i = 0; i < NDIMS - 1; i++) 
                 outfileBWriter.write(Float.toString(gyroVals[i]) + ",");
