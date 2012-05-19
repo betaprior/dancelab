@@ -53,6 +53,7 @@ class DataLogger implements SensorEventListener {
     }
 
     public boolean isActive() { return loggingIsOn; }
+    public boolean peakDetectorActive() { return peakDetectionIsOn; }
 
     protected void startLogging() {
         registerListeners();
@@ -215,8 +216,11 @@ class DataLogger implements SensorEventListener {
         }
     }
     
-    public void setPeakDetectorEnabled(boolean pdSwitch) {
-        peakDetectionIsOn = pdSwitch;
+    public void setPeakDetectorEnabled(final boolean pdSwitch) {
+        if (peakDetectionIsOn == pdSwitch)
+            return;
+        else 
+            peakDetectionIsOn = pdSwitch;
         if (pdSwitch)
             peakDet.init();
         else

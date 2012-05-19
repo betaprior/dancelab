@@ -25,7 +25,8 @@ class PeakDetector implements Callback {
     private HandlerThread handlerThread;
     private Looper looper;
     private Handler handler;
-    private int counter = 0;
+    private int n = 0;
+    private double mean = 0, var = 0, sd = 0, x2sum = 0;
     
     static class Datapoint {
         long t;
@@ -37,7 +38,7 @@ class PeakDetector implements Callback {
     }
     
     public void init() {
-        counter = 0;
+        n = 0; mean = 0; var = 0; sd = 0; x2sum = 0;
         handlerThread = new HandlerThread("PeakDetectorThread");
         handlerThread.start();
         looper = handlerThread.getLooper();
@@ -54,14 +55,29 @@ class PeakDetector implements Callback {
 
     @Override
     public boolean handleMessage(Message m) {
-        counter++;
-        //Log.d(TAG, "Receiving message " + Integer.toString(counter));
-        if (counter > 120)
+        n++;
+        //Log.d(TAG, "Receiving message " + Integer.toString(n));
+        int BURN_IN_PTS = 150;
+        double thr_sigma = 1.9;
+        double a = ((Datapoint)m.obj).a;
+        long t = ((Datapoint)m.obj).t;
+        double xbar = mean;
+        x2sum += a * a;
+        mean = ((n - 1) * xbar + a) / n;
+        var = ((n * (x2sum - (n - 1) * xbar * xbar)) + 
+                (n - 1) * Math.pow(xbar - a, 2)) / (n * n);
+        
+        sd = Math.sqrt(var);
+        //Log.d(TAG + "dumbledore", Integer.toString(n) + "," + Long.toString(t) + "," + Double.toString(a) +
+          //      "," + Double.toString(mean) + "," + Double.toString(sd));
+        // Log.d(TAG, "a = " + Double.toString(a) + "; n = " + Double.toString(n) + "; Var = " + Double.toString(var) + "; x2s = " + Double.toString(x2sum) + "; mean = " + Double.toString(mean) + "; sd = " + Double.toString(sd) + "; thr = " + Double.toString(mean + sd * thr_sigma));
+        if (n > BURN_IN_PTS && a > mean + sd * thr_sigma) {
             danceLab.runOnUiThread(new Runnable() {
                     public void run() {
                         PeakDetector.this.danceLab.finalizeShockSensorSync();
                     }
                 });
+        }
         return true;
     }
 }

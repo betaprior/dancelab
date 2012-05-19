@@ -33,6 +33,7 @@ import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 //import android.widget.EditText;
 import android.widget.ArrayAdapter;
@@ -44,6 +45,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.util.Log;
 import android.graphics.PorterDuff;
+import android.view.View.OnLongClickListener;
+import android.view.View.OnTouchListener;
 
 
 public class DanceLab extends Activity implements OnSharedPreferenceChangeListener {
@@ -60,7 +63,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     private TextView statusText;
     private TextView recordingFileText;
     private TextView ntpStatusText;
-    private Button syncButton;
+    private Button syncButton, stopButton;
     
     private Chronometer chronometer;
     private DataLogger logger;
@@ -73,6 +76,10 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     private PowerManager.WakeLock wl;
     
     private long ntpOffset = 0;
+    
+    private boolean buttonTimerDone = false, stopWaiting = true;
+    private static final int BUTTON_HOLD_INTERVAL = 2000;
+    private Handler btnHoldHandler = new Handler(); 
 
 
     /** Called when the activity is first created. */
@@ -101,7 +108,11 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         ntpStatusText = (TextView) findViewById(R.id.textViewStatusNtp);
         setRecordingStatusText("Recording to: " + fileManager.getDataDir().getPath());
         syncButton = (Button) findViewById(R.id.syncButton1);
-                
+        stopButton = (Button) findViewById(R.id.stopButton1);
+        stopButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
+                public void run() { if (buttonTimerDone) { stopRecording(); } } 
+            }));
+ 
         chronometer = (Chronometer) findViewById(R.id.chronometer1);
         initializeChronometer();
         
@@ -111,6 +122,30 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         prefs.registerOnSharedPreferenceChangeListener(this);
     }
     
+    private View.OnTouchListener myButtonLongPressListener(final Runnable delayedAction) {
+        return new OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch(event.getAction()){
+                case MotionEvent.ACTION_DOWN:
+                      buttonTimerDone = true;
+                      displayToast("Keep holding...");
+                      // Handler handler = new Handler(); 
+                      // handler.postDelayed(delayedAction, BUTTON_HOLD_INTERVAL);
+                      btnHoldHandler.postDelayed(delayedAction, BUTTON_HOLD_INTERVAL);
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    break;
+                case MotionEvent.ACTION_UP:
+                    buttonTimerDone = false;
+                    btnHoldHandler.removeCallbacks(delayedAction);
+                    break;
+                }
+                return true;
+            }
+        };
+    }
+
     private void initializeChronometer() {
         chronometer.setOnChronometerTickListener(
                 new Chronometer.OnChronometerTickListener(){
@@ -249,12 +284,29 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         case R.id.startButton1:
             startRecording();
             break;
-        case R.id.stopButton1:
-            stopRecordingMaybe();
-            break;
+        // case R.id.stopButton1:
+        //     stopRecordingMaybe();
+        //     break;
         case R.id.syncButton1:
             startRecording();
             startShockSensorSync();
+            syncButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
+                    public void run() { 
+                        if (buttonTimerDone) { 
+                            if (logger.peakDetectorActive()) {
+                                displayToast("Stopping peak detector");
+                                logger.setPeakDetectorEnabled(false);
+                                syncButton.setEnabled(false);
+                                syncButton.setEnabled(true);
+                                syncButton.getBackground().setColorFilter(null);
+                            } else {
+                                displayToast("Restarting peak detector");
+                                startShockSensorSync();
+                            }
+                        } 
+                    } 
+            }));
+
             break;
         }
     }
@@ -268,22 +320,25 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         chronometer.setBase(SystemClock.elapsedRealtime());
         chronometer.start();
         statusText.setText("recording");         
-        displayToast("Initiating recording");
-        syncButton.setEnabled(false);
+        // displayToast("Initiating recording");
+        // syncButton.setEnabled(false);
     }
     
     private void startShockSensorSync() {
         if (!logger.isActive()) return;
         logger.setPeakDetectorEnabled(true);
+        syncButton.setEnabled(false);
+        syncButton.setEnabled(true);
         syncButton.getBackground().setColorFilter(0xFFFF0000, PorterDuff.Mode.MULTIPLY);
     }
    
     public void finalizeShockSensorSync() {
         logger.setPeakDetectorEnabled(false);
-        Log.d(TAG, "Setting button to green");
-        syncButton.setEnabled(true);
-        syncButton.getBackground().setColorFilter(0xFF00FF00, PorterDuff.Mode.MULTIPLY);
+        // Log.d(TAG, "Setting button to green");
+        displayToast("GREEN");
         syncButton.setEnabled(false);
+        syncButton.setEnabled(true);
+        syncButton.getBackground().setColorFilter(0xFF00FF00, PorterDuff.Mode.MULTIPLY);    
     }
     
 
@@ -316,8 +371,11 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         chronometer.stop();
         statusText.setText("stopped; " + logger.getRunInfo());
         updateFileList();
+        logger.setPeakDetectorEnabled(false);
+        syncButton.setEnabled(false);
         syncButton.setEnabled(true);
         syncButton.getBackground().setColorFilter(null);
+        syncButton.setOnTouchListener(null);
     }
    
     class GetNtpTime extends AsyncTask<Void, Void, Boolean> {

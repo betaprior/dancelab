@@ -3,10 +3,10 @@
     <string name="app_name">DanceLab</string>
     <string name="statusFieldNtp">NTP offset:</string>
     <string name="statusFieldRecordingTo">Recording to:</string>
-    <string name="titleDanceLab">Dance Lab v. 0.3</string>
+    <string name="titleDanceLab">Dance Lab v. 0.4</string>
     <string name="chronometer">Chronometer</string>
     <string name="btnStartRecording">Start recording</string>
-    <string name="btnStopRecording">Press 3x to stop</string>
+    <string name="btnStopRecording">Hold to stop</string>
     <string name="btnNtp">NTP</string>
     <string name="btnPeakDet">Sync</string>
     <string name="prefsAccelerometerRate">Accelerometer Rate</string>
