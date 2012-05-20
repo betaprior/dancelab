@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" android:key="@string/titleDancelabPrefs"> 
  	<PreferenceCategory 
+ 	    android:key="prefsCategorySensors"
 		android:title="Sensor settings">
     
     <ListPreference
@@ -22,11 +23,20 @@
 	<PreferenceCategory 
 		android:title="Peak detector settings">
     <EditTextPreference
-	android:key="prefsPeakDetectorThreshold"
+	android:key="prefsPeakDetectorGAbsThreshold"
 	android:title="Shock detection threshold"
 	android:defaultValue="11.4"
-	android:inputType="number"
-	android:summary="Shock detection threshold for sync (m/s^2)" />
+	android:inputType="numberDecimal"
+	android:summary="Threshold for sync: absolute (m/s^2)" />
+    
+    <EditTextPreference
+	android:key="prefsPeakDetectorThreshold"
+	android:title="Shock detection stdev"
+	android:defaultValue="2.2"
+	android:inputType="numberDecimal"
+	android:summary="Threshold for sync: mean + stdev (m/s^2)" />
+    
+
     </PreferenceCategory>
 
 </PreferenceScreen>

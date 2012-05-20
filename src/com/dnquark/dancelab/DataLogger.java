@@ -37,7 +37,7 @@ class DataLogger implements SensorEventListener {
     private File outfile, outfileMeta;
     private BufferedWriter outfileBWriter, outfileBWriterMeta;
     private Long tStart, tStop, tStart_epoch, tStop_epoch, tStart_ns, tStop_ns;
-    private Long eventTimestampOffset, eventTime;
+    private Long eventTimestampOffset, eventTime, eventTimeWrtRef, syncReference = 0L;
 
     public DataLogger(DanceLab danceLab) { 
         this.danceLab = danceLab;
@@ -61,6 +61,7 @@ class DataLogger implements SensorEventListener {
         tStart = SystemClock.uptimeMillis();
         tStart_ns = System.nanoTime();
         tStart_epoch = System.currentTimeMillis();
+        // syncReference = tStart_epoch;
         setEventTimestampOffset();
         writeMetadataStart();
         loggingIsOn = true;
@@ -101,7 +102,6 @@ class DataLogger implements SensorEventListener {
     }
 
     public void registerListeners() {
-        //displayToast("Reg:" + Integer.toString(accelSensorRate) + " " + Integer.toString(gyroSensorRate));
         mSensorManager.registerListener(this,
                 mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
                 accelSensorRate);
@@ -114,7 +114,6 @@ class DataLogger implements SensorEventListener {
     }
 
     public void unregisterListeners() {
-        //displayToast("UNREG");
         mSensorManager.unregisterListener(this);
     }
 
@@ -136,6 +135,7 @@ class DataLogger implements SensorEventListener {
         eventTimestampOffset = danceLab.ntpClient.isValid() ? 
             (danceLab.ntpClient.getNtpTime() - danceLab.ntpClient.getNtpTimeReference())
             : (tStart_epoch - tStart_ns / NANO_IN_MILLI);
+        syncReference = tStart_ns / NANO_IN_MILLI + eventTimestampOffset;
     }
 
     public void writeMetadataEnd() {
@@ -155,7 +155,9 @@ class DataLogger implements SensorEventListener {
         String dt_s = String.format(fmt, (float)dt/1000);
         String samp_t_a = String.format(fmt, (float)dt / (num_a+1));
         String samp_t_g = String.format(fmt, (float)dt / (num_g+1));
-        return "len=" + dt_s + " s; " + samp_t_a + " ms/acc smp; " + samp_t_g + " ms/gyr smp"; 
+        String res = "len=" + dt_s + " s; " + samp_t_a + " ms/acc smp";
+        if (danceLab.haveGyro()) res += "; " + samp_t_g + " ms/gyr smp";
+        return res;
     }
 
     private void finalizeFileIO() {
@@ -186,10 +188,13 @@ class DataLogger implements SensorEventListener {
         }
     }
 
+    public void setSyncReference(long ref) { syncReference = ref; }
+
     public void onSensorChanged(SensorEvent event) {
         // Log.d(TAG, "idx = " + idx + "sensor: " + event.sensor + ", x: " + event.values[0] + ", y: " + event.values[1] + ", z: " + event.values[2]);
         synchronized (this) {     
             eventTime = event.timestamp / NANO_IN_MILLI + eventTimestampOffset;
+            eventTimeWrtRef = eventTime - syncReference;
             switch (event.sensor.getType()) {
             case Sensor.TYPE_ACCELEROMETER:
                 num_a++;
@@ -243,7 +248,7 @@ class DataLogger implements SensorEventListener {
             // outfileBWriter.write("TIMESTAMP TESTS:" + Long.toString(event.timestamp) + " " + Long.toString(System.currentTimeMillis()) + " " + System.nanoTime() + " " + SystemClock.elapsedRealtime() + 
                     // " " + Long.toString(ntpClient.getNtpTimeReference()) + " " +  Long.toString(time));
             // outfileBWriter.newLine();
-            outfileBWriter.write(Integer.toString(idx++) + ","
+            outfileBWriter.write(Long.toString(eventTimeWrtRef) + ","
                     + Integer.toString(event.sensor.getType()) + ","
                     + Long.toString(eventTime) + ",");
             for (i = 0; i < NDIMS; i++)

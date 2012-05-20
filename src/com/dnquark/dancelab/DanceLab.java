@@ -16,6 +16,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
+import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorManager;
 import android.media.AudioFormat;
@@ -57,7 +58,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     private static final String TAG = "DanceLab";  
     private final int MENU_PREFS=1, MENU_NTP_SYNC=2, MENU_CLEAR=3;
     private final int GROUP_DEFAULT=0;
-    private static final int DIALOG_ERASE = 0, DIALOG_ACC_RATE = 1, DIALOG_GYRO_RATE = 2;
+    private static final int DIALOG_ERASE = 0;
     private static final String EOL = String.format("%n");
 
     private TextView statusText;
@@ -76,8 +77,9 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     private PowerManager.WakeLock wl;
     
     private long ntpOffset = 0;
+    private boolean haveGyro;
     
-    private boolean buttonTimerDone = false, stopWaiting = true;
+    private boolean buttonTimerDone = false;
     private static final int BUTTON_HOLD_INTERVAL = 2000;
     private Handler btnHoldHandler = new Handler(); 
 
@@ -116,6 +118,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         chronometer = (Chronometer) findViewById(R.id.chronometer1);
         initializeChronometer();
         
+        haveGyro = this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE);
+                
         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, TAG);
         prefs = PreferenceManager.getDefaultSharedPreferences(this); //
@@ -153,7 +157,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
                         if (!logger.isActive()) return;
                         long ts = SystemClock.uptimeMillis();
                         String chrText = chr.getText().toString();
-                        logger.metadataWrite(new String("chr: " + chrText + " " + Long.toString(ts) + EOL));
+                        logger.metadataWrite(new String("CHR: " + chrText + " " + Long.toString(ts) + EOL));
              
                     }}
                 );
@@ -172,7 +176,6 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
                 samplingRatePrefStringDecode(prefs.getString("prefsAccelSamplingRate", "")));
         logger.setSensorRate(Sensor.TYPE_GYROSCOPE,
                 samplingRatePrefStringDecode(prefs.getString("prefsGyroSamplingRate", "")));
-        double thrPeakDet = Double.parseDouble(prefs.getString("prefsPeakDetectorThreshold", "0"));
     }
 
     private int samplingRatePrefStringDecode(String s) {
@@ -290,23 +293,6 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         case R.id.syncButton1:
             startRecording();
             startShockSensorSync();
-            syncButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
-                    public void run() { 
-                        if (buttonTimerDone) { 
-                            if (logger.peakDetectorActive()) {
-                                displayToast("Stopping peak detector");
-                                logger.setPeakDetectorEnabled(false);
-                                syncButton.setEnabled(false);
-                                syncButton.setEnabled(true);
-                                syncButton.getBackground().setColorFilter(null);
-                            } else {
-                                displayToast("Restarting peak detector");
-                                startShockSensorSync();
-                            }
-                        } 
-                    } 
-            }));
-
             break;
         }
     }
@@ -330,38 +316,38 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         syncButton.setEnabled(false);
         syncButton.setEnabled(true);
         syncButton.getBackground().setColorFilter(0xFFFF0000, PorterDuff.Mode.MULTIPLY);
+        setupSyncButtonLongPress();
+    }
+    
+    private void setupSyncButtonLongPress() {
+        syncButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
+                public void run() { 
+                    if (buttonTimerDone) { 
+                        if (logger.peakDetectorActive()) {
+                            displayToast("Stopping peak detector");
+                            logger.setPeakDetectorEnabled(false);
+                            syncButton.setEnabled(false);
+                            syncButton.setEnabled(true);
+                            syncButton.getBackground().setColorFilter(null);
+                        } else {
+                            displayToast("Restarting peak detector");
+                            startShockSensorSync();
+                        }
+                    } 
+                } 
+            }));
     }
    
-    public void finalizeShockSensorSync() {
+    public void finalizeShockSensorSync(long timestamp) {
         logger.setPeakDetectorEnabled(false);
+        logger.setSyncReference(timestamp);
+        logger.metadataWrite("SYNC: " + Long.toString(timestamp) + EOL);
         // Log.d(TAG, "Setting button to green");
-        displayToast("GREEN");
         syncButton.setEnabled(false);
         syncButton.setEnabled(true);
         syncButton.getBackground().setColorFilter(0xFF00FF00, PorterDuff.Mode.MULTIPLY);    
     }
     
-
-    int stopPressCounter = 0;
-    long firstPressMs = 0;
-    boolean stoppingMaybe = false;
-    int NUM_STOP_PRESSES = 3;
-    int STOP_PRESS_MS = 800;
-    public void stopRecordingMaybe() {
-        long now = SystemClock.uptimeMillis();
-        if (!stoppingMaybe) {
-            stopPressCounter = 1;
-            firstPressMs = now;
-            stoppingMaybe = true;
-        } else {
-            stopPressCounter++;
-            if (stopPressCounter >= NUM_STOP_PRESSES) {
-                stoppingMaybe = false;
-                if ((int)(now - firstPressMs) < STOP_PRESS_MS) 
-                    stopRecording();
-            }
-        }
-    }
 
     public void stopRecording() {
         if (wl.isHeld())
@@ -448,7 +434,11 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     public void onBackPressed() {
         if (logger.isActive())
             displayToast("Stop data logging before exiting");
+        else
+            super.onBackPressed();
     }
+    
+    public boolean haveGyro() { return haveGyro; }
  
     private void displayToast(String msg) {
         Toast.makeText(getBaseContext(), msg, 
