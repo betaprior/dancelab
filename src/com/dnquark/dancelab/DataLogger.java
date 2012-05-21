@@ -21,7 +21,7 @@ class DataLogger implements SensorEventListener {
      */
     final DanceLab danceLab;
     private static final String TAG = "DanceLab DataLogger";
-    private static final int MSG_PEAKDET_DATAPOINT = 1;
+    private static final int MSG_PEAKDET_DATAPOINT = 1, MSG_GRAPH_DATAPOINT = 2;
     private String metaFilename, saveFilename = FileManager.SAVE_FILENAME_BASE;
     private static final int NDIMS = 3;
     private static final int NANO_IN_MILLI = 1000000;
@@ -206,6 +206,7 @@ class DataLogger implements SensorEventListener {
                 accelMagnitude = (float) Math.sqrt(accelMagnitude);
                 if (peakDetectionIsOn)
                     passToPeakDetector();
+                passToGraph();
                 break;
             case Sensor.TYPE_ROTATION_VECTOR:
             case Sensor.TYPE_GYROSCOPE:
@@ -231,6 +232,13 @@ class DataLogger implements SensorEventListener {
         else
             peakDet.stop();
     }
+   
+    public void passToGraph() {
+        GraphView.Datapoint data = new GraphView.Datapoint(eventTime, accelMagnitude);
+        danceLab.getGraphView().getHandler()
+            .obtainMessage(MSG_GRAPH_DATAPOINT, data)
+            .sendToTarget();
+    } 
     
     public void passToPeakDetector() {
         // Log.d(TAG, "Sending message");

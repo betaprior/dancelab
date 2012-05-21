@@ -64,6 +64,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     private TextView statusText;
     private TextView recordingFileText;
     private TextView ntpStatusText;
+    private GraphView graphView;
     private Button syncButton, stopButton;
     
     private Chronometer chronometer;
@@ -118,6 +119,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         chronometer = (Chronometer) findViewById(R.id.chronometer1);
         initializeChronometer();
         
+        graphView = (GraphView) findViewById(R.id.graphDisplay1);
+
         haveGyro = this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE);
                 
         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
@@ -163,6 +166,18 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
                 );
     }
 
+    private void hideBgdImage() {
+        findViewById(R.id.bgdImage1).setVisibility(View.GONE);
+    }
+    private void toggleBgdImage() {
+        View bgdImg = findViewById(R.id.bgdImage1);
+        bgdImg.setVisibility(bgdImg.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
+    }
+    private void toggleGraphDisplay() {
+        graphView.setVisibility(graphView.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
+    }
+    public View getGraphView() { return graphView; }
+    
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(GROUP_DEFAULT, MENU_PREFS, 0, "Preferences");
@@ -287,12 +302,12 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         case R.id.startButton1:
             startRecording();
             break;
-        // case R.id.stopButton1:
-        //     stopRecordingMaybe();
-        //     break;
         case R.id.syncButton1:
             startRecording();
             startShockSensorSync();
+            break;
+        case R.id.testButton1:
+            toggleGraphDisplay();
             break;
         }
     }
@@ -301,6 +316,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         if (logger.isActive()) return;
         wl.acquire();
         fileManager.makeTsFilename();
+        graphView.prepareDataHandlers();
         soundrec.start();
         logger.startLogging();
         chronometer.setBase(SystemClock.elapsedRealtime());
@@ -355,6 +371,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         logger.stopLogging();
         soundrec.stop();
         chronometer.stop();
+        graphView.stopDataHandlers();
         statusText.setText("stopped; " + logger.getRunInfo());
         updateFileList();
         logger.setPeakDetectorEnabled(false);
@@ -410,6 +427,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     
 
     public void updateFileList() {
+        hideBgdImage();
         ListView listView = (ListView) findViewById(R.id.filelist);
         List<String> filenames = fileManager.getFileListing();
         if (filenames == null) return;
