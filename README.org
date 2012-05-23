@@ -14,16 +14,38 @@ due to the use of the gyroscope and AAC APIs.
 
 * Usage notes
 
-- Hit start on the devices that are logging the data. With the logging
-  devices (and the video camera) in very close proximity, hit the /Beep/
-  button on one of the phones. This will produce a 440 Hz tone that will be
-  used to sync data traces.
-- To stop recording, hit /Stop/ 3 times in quick succession (this is done to
-  prevent accidental presses).
+- Hit either "Start" or "Sync" to start recording.  Long-press "Stop" to stop.
+- NTP Sync: to better align the data, the app performs an NTP query on
+  startup; you can force the NTP query through a menu item. NTP data is
+  saved for later use until the phone is restarted (this is useful for
+  devices that do not have permanent network connectivity).  
+- Sync functionality (non-NTP): when the sync button is activated (and turns red)
+  the phone waits for an acceleration spike that exceeds the threshold of the
+  dotted line on the screen (controllable in preferences). Once it registers
+  the spike, the button turns green and the time is recorded in the metadata
+  file; it is also set as the zero timepoint in the RUN_MS time data
+  column. To reset the peak detector (e.g. after an erroneous registration),
+  or to turn on the peak detector after the logger has been started, hold
+  down the sync button.  Holding down the sync button while it is red turns
+  off the peak detector.
+
+  One way to use the sync functionality is to activate sync on the two
+  phones, hold them both in the same hand, and rotate the wrist abruptly (you
+  can see that this produces a large acceleration spike).  Hopefully, they
+  will both register a clean acceleration spike that will serve as the sync
+  signal.  
+
+  In practice, sync gives good acceleration trace alignment, but is not
+  superior to NTP under optimal conditions.
 - The screen stays on throughout logging. Apparently, collecting acceleration
   data in standby mode is non-trivial or impossible (I have not seen
   definitive answers about whether partial wake locks solve this).
 - Data collection will stop if home or power buttons get pressed during
   logging, so try to avoid that.
+- Current data columns: RUN_MS, SENSOR_TYPE, EPOCH_MS, ACCEL{x,y,z}, ACCEL_MAGNITUDE, GYRO{x,y,z}
+  Note that RUN_MS is not guaranteed to be monotonic; for instance, every
+  time peak detector sync is completed, the RUN_MS time is re-zeroed for
+  subsequent datapoints.  EPOCH_MS stores the absolute time (epoch format),
+  with the NTP correction.  SENSOR_TYPE is 1 for accelerometer, 4 for the gyro.
 - audio can be converted into a form suitable for Matlab/SciPy/Mathematica
   analysis via  =ffmpeg -i test.3gp -vn -f wav -acodec pcm_u8 test.wav=

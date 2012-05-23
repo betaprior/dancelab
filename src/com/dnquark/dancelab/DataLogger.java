@@ -216,7 +216,8 @@ class DataLogger implements SensorEventListener {
 
     public void onSensorChanged(SensorEvent event) {
         // Log.d(TAG, "idx = " + idx + "sensor: " + event.sensor + ", x: " + event.values[0] + ", y: " + event.values[1] + ", z: " + event.values[2]);
-        synchronized (this) {     
+        synchronized (this) {
+            if (!loggingIsOn) return; // o/w we still get sensor events after they are unregistered
             eventTime = event.timestamp / NANO_IN_MILLI + eventTimestampOffset;
             // offsetReference == {tStart_epoch OR last sync timestamp (epoch format), if set}
             // thus, eventTimeWrtRef gives milliseconds since {start OR sync} vs epoch timestamp
