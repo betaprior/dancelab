@@ -3,7 +3,6 @@ package com.dnquark.dancelab;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -19,15 +18,9 @@ import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorManager;
-import android.media.AudioFormat;
-import android.media.AudioManager;
-import android.media.AudioTrack;
-import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
@@ -39,12 +32,12 @@ import android.view.View;
 //import android.widget.EditText;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.Chronometer;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.util.Log;
+import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.view.View.OnLongClickListener;
 import android.view.View.OnTouchListener;
@@ -56,21 +49,28 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     public static boolean DEBUG_FILENAME = false; 
     
     private static final String TAG = "DanceLab";  
-    private final int MENU_PREFS=1, MENU_NTP_SYNC=2, MENU_CLEAR=3;
+    private final int MENU_PREFS=1, MENU_NTP_SYNC=2, MENU_CLEAR=3, MENU_FILELIST=4;
+    private static final int ON=1, OFF=0;
+    private static final int V_BGD=0, V_GRAPH=1, V_FILELIST=2;
     private final int GROUP_DEFAULT=0;
     private static final int DIALOG_ERASE = 0;
-    private static final String EOL = String.format("%n");
+    static final String EOL = String.format("%n");
 
     private TextView statusText;
     private TextView recordingFileText;
     private TextView ntpStatusText;
     private GraphView graphView;
+    private ListView fileListView;
+    private View bgdImage;
+
     private Button syncButton, stopButton;
     
     private Chronometer chronometer;
     private DataLogger logger;
     private DLSoundRecorder soundrec;
     SharedPreferences prefs;
+    SharedPreferences appDataPrefs;
+    static final String DATA_PREFS_FILENAME = "datastorePrefs";
     FileManager fileManager;
     SntpClient ntpClient;
 
@@ -94,6 +94,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         getDeviceId();
         initComponents();
         updateFileList();
+        showInFrameView(V_BGD);
         
         new GetNtpTime().execute();
         Thread.setDefaultUncaughtExceptionHandler(new CustomExceptionHandler(
@@ -105,27 +106,30 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         logger = new DataLogger(this);
         soundrec = new DLSoundRecorder(this);
         ntpClient = new SntpClient();
+        
+        appDataPrefs = getSharedPreferences(DATA_PREFS_FILENAME, MODE_PRIVATE);
 
         statusText = (TextView) findViewById(R.id.recordingStatus1);
         recordingFileText = (TextView) findViewById(R.id.textViewStatusRecFile);
         ntpStatusText = (TextView) findViewById(R.id.textViewStatusNtp);
         setRecordingStatusText("Recording to: " + fileManager.getDataDir().getPath());
         syncButton = (Button) findViewById(R.id.syncButton1);
+        setupSyncButtonLongPress();
         stopButton = (Button) findViewById(R.id.stopButton1);
-        stopButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
-                public void run() { if (buttonTimerDone) { stopRecording(); } } 
-            }));
+        setupStopButtonLongPress();
  
         chronometer = (Chronometer) findViewById(R.id.chronometer1);
         initializeChronometer();
         
         graphView = (GraphView) findViewById(R.id.graphDisplay1);
+        fileListView = (ListView) findViewById(R.id.filelist);
+        bgdImage = findViewById(R.id.bgdImage1);
 
         haveGyro = this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE);
                 
         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, TAG);
-        prefs = PreferenceManager.getDefaultSharedPreferences(this); //
+        prefs = PreferenceManager.getDefaultSharedPreferences(this); 
         prefs.registerOnSharedPreferenceChangeListener(this);
     }
     
@@ -152,6 +156,34 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
             }
         };
     }
+    
+    private void setupSyncButtonLongPress() {
+        syncButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
+                public void run() { 
+                    if (buttonTimerDone) { 
+                        if (logger.peakDetectorActive()) {
+                            displayToast("Stopping peak detector");
+                            logger.setPeakDetectorEnabled(false);
+                            graphView.setDrawSyncThreshold(false);
+                            syncButton.setEnabled(false);
+                            syncButton.setEnabled(true);
+                            syncButton.getBackground().setColorFilter(null);
+                        } else {
+                            displayToast("Restarting peak detector");
+                            startShockSensorSync();
+                        }
+                    } 
+                } 
+            }));
+    }
+
+    private void setupStopButtonLongPress() {
+        stopButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
+                    public void run() { 
+                        if (buttonTimerDone) { stopRecording(); }
+                    } 
+            }));
+    }
 
     private void initializeChronometer() {
         chronometer.setOnChronometerTickListener(
@@ -166,12 +198,40 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
                 );
     }
 
-    private void hideBgdImage() {
-        findViewById(R.id.bgdImage1).setVisibility(View.GONE);
+    private void showInFrameView(int v) {
+        switch (v) {
+        case V_BGD:
+            toggleGraphDisplay(OFF);
+            toggleFileListDisplay(OFF);
+            toggleBgdImage(ON);
+            return;
+        case V_GRAPH:
+            toggleGraphDisplay(ON);
+            toggleFileListDisplay(OFF);
+            toggleBgdImage(OFF);
+            return;
+        case V_FILELIST:
+            toggleGraphDisplay(OFF);
+            toggleFileListDisplay(ON);
+            toggleBgdImage(OFF);
+            return;
+        }
+    } 
+
+    private void toggleFileListDisplay(int state) {
+        fileListView.setVisibility(state == ON ? View.VISIBLE : View.GONE);
+    }
+    private void toggleFileListDisplay() {
+        fileListView.setVisibility(fileListView.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
+    }
+    private void toggleBgdImage(int state) {
+        findViewById(R.id.bgdImage1).setVisibility(state == ON ? View.VISIBLE : View.GONE);
     }
     private void toggleBgdImage() {
-        View bgdImg = findViewById(R.id.bgdImage1);
-        bgdImg.setVisibility(bgdImg.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
+        bgdImage.setVisibility(bgdImage.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
+    }
+    private void toggleGraphDisplay(int state) {
+        graphView.setVisibility(state == ON ? View.VISIBLE : View.GONE);
     }
     private void toggleGraphDisplay() {
         graphView.setVisibility(graphView.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
@@ -182,6 +242,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(GROUP_DEFAULT, MENU_PREFS, 0, "Preferences");
         menu.add(GROUP_DEFAULT, MENU_NTP_SYNC, 0, "NTP Sync");        
+        menu.add(GROUP_DEFAULT, MENU_FILELIST, 0, "File list");        
         menu.add(GROUP_DEFAULT, MENU_CLEAR, 0, "Clear Data");
         return super.onCreateOptionsMenu(menu);
     }
@@ -207,9 +268,15 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (logger.isActive()) return true;
-        switch(item.getItemId()) {
+        switch (item.getItemId()) {
         case MENU_PREFS:
             startActivity(new Intent(this, PrefsActivity.class));
+            return true;
+        case MENU_FILELIST:
+            if (fileListView.getVisibility() != View.VISIBLE)
+                showInFrameView(V_FILELIST); 
+            else
+                showInFrameView(V_GRAPH);
             return true;
         case MENU_NTP_SYNC:
             new GetNtpTime().execute();
@@ -256,7 +323,6 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
 
     protected Dialog onPrepareDialog(int id) {
         Dialog dialog;
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
         switch(id) {
         case DIALOG_ERASE:
             dialog = eraseDataDialogBuilder().create();
@@ -270,7 +336,6 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
 
     protected Dialog onCreateDialog(int id) {
         Dialog dialog;
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
         switch(id) {
         case DIALOG_ERASE:
             dialog = eraseDataDialogBuilder().create();
@@ -286,16 +351,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         updateFileList();
         displayToast("Erased all data");
     }
-    /*
-      @Override
-      protected void onResume() {
-      super.onResume();
-      mSensorManager.registerListener(this,
-      mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
-      SensorManager.SENSOR_DELAY_FASTEST);
-      }
-    */
 
+    
     /* invoked via android:onClick="myClickHandler" in the button entry of the layout XML */
     public void myClickHandler(View view) {
         switch (view.getId()) {
@@ -305,9 +362,6 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         case R.id.syncButton1:
             startRecording();
             startShockSensorSync();
-            break;
-        case R.id.testButton1:
-            toggleGraphDisplay();
             break;
         }
     }
@@ -320,45 +374,27 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         soundrec.start();
         logger.startLogging();
         chronometer.setBase(SystemClock.elapsedRealtime());
+        chronometer.setTextColor(Color.WHITE);
         chronometer.start();
         statusText.setText("recording");         
-        // displayToast("Initiating recording");
-        // syncButton.setEnabled(false);
+        showInFrameView(V_GRAPH);
     }
     
     private void startShockSensorSync() {
         if (!logger.isActive()) return;
         logger.setPeakDetectorEnabled(true);
+        graphView.setDrawSyncThreshold(true);
         syncButton.setEnabled(false);
         syncButton.setEnabled(true);
         syncButton.getBackground().setColorFilter(0xFFFF0000, PorterDuff.Mode.MULTIPLY);
-        setupSyncButtonLongPress();
     }
     
-    private void setupSyncButtonLongPress() {
-        syncButton.setOnTouchListener(myButtonLongPressListener(new Runnable() { 
-                public void run() { 
-                    if (buttonTimerDone) { 
-                        if (logger.peakDetectorActive()) {
-                            displayToast("Stopping peak detector");
-                            logger.setPeakDetectorEnabled(false);
-                            syncButton.setEnabled(false);
-                            syncButton.setEnabled(true);
-                            syncButton.getBackground().setColorFilter(null);
-                        } else {
-                            displayToast("Restarting peak detector");
-                            startShockSensorSync();
-                        }
-                    } 
-                } 
-            }));
-    }
    
     public void finalizeShockSensorSync(long timestamp) {
         logger.setPeakDetectorEnabled(false);
-        logger.setSyncReference(timestamp);
+        logger.setOffsetReference(timestamp);
+        graphView.setDrawSyncThreshold(false);
         logger.metadataWrite("SYNC: " + Long.toString(timestamp) + EOL);
-        // Log.d(TAG, "Setting button to green");
         syncButton.setEnabled(false);
         syncButton.setEnabled(true);
         syncButton.getBackground().setColorFilter(0xFF00FF00, PorterDuff.Mode.MULTIPLY);    
@@ -371,8 +407,9 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         logger.stopLogging();
         soundrec.stop();
         chronometer.stop();
+        chronometer.setTextColor(Color.GREEN);
         graphView.stopDataHandlers();
-        statusText.setText("stopped; " + logger.getRunInfo());
+        statusText.setText(logger.getRunInfo());
         updateFileList();
         logger.setPeakDetectorEnabled(false);
         syncButton.setEnabled(false);
@@ -381,6 +418,63 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         syncButton.setOnTouchListener(null);
     }
    
+
+
+    public void updateFileList() {
+        List<String> filenames = fileManager.getFileListing();
+        if (filenames == null) return;
+        Collections.sort(filenames, Collections.reverseOrder());
+        String tsDateEOL = ".*\\d{8}-\\d{6}$";
+        List<String> filenamesFiltered = new ArrayList<String>();
+        for (String l : filenames)
+            if (l.matches(tsDateEOL))
+                filenamesFiltered.add(l);
+        ArrayAdapter<String> fileList =
+            new ArrayAdapter<String>(this, R.layout.row, filenamesFiltered);
+
+        fileListView.setAdapter(fileList);
+
+    }
+    
+    public void setRecordingStatusText(String text) {
+        recordingFileText.setText(text);
+    }
+    
+    @Override
+    public void onBackPressed() {
+        if (logger.isActive())
+            displayToast("Stop data logging before exiting");
+        else
+            super.onBackPressed();
+    }
+    
+    public boolean haveGyro() { return haveGyro; }
+ 
+    private void displayToast(String msg) {
+        Toast.makeText(getBaseContext(), msg, 
+                Toast.LENGTH_SHORT).show();        
+    }    
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        logger.stopLogging();
+        soundrec.release();
+    }
+     
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!logger.isActive())
+            showInFrameView(V_BGD);
+    }
+    
+    public String getTimestamp() {
+        Date dateNow = new Date ();
+        SimpleDateFormat tsFormat = new SimpleDateFormat("yyyyMMdd-HHmmss");
+        return tsFormat.format(dateNow).toString();
+    }
+
     class GetNtpTime extends AsyncTask<Void, Void, Boolean> {
         private String NTP_SERVER = "pool.ntp.org";
         private int NTP_TIMEOUT_MS = 2000;
@@ -415,6 +509,12 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
             if (success) {
                 ntpStatusText.setText(getResources().getString(R.string.statusFieldNtp) 
                         + " " + Long.toString(ntpOffset) + " ms");
+                SharedPreferences.Editor appDataPrefsEditor = appDataPrefs.edit();
+                appDataPrefsEditor.putLong("ntpSyncTimeEpoch", System.currentTimeMillis()); 
+                appDataPrefsEditor.putLong("ntpSyncClockOffset", ntpClient.getClockOffset());
+                appDataPrefsEditor.putLong("ntpTime", ntpClient.getNtpTime());
+                appDataPrefsEditor.putLong("ntpSyncTimeRef", ntpClient.getNtpTimeReference());
+                appDataPrefsEditor.commit();
             } else {
                 ntpStatusText.setText(getResources().getString(R.string.statusFieldNtp) + " unavailable");
                 displayToast("Failed to get time from " + NTP_SERVER);
@@ -423,58 +523,5 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
 
     }
 
-
-    
-
-    public void updateFileList() {
-        hideBgdImage();
-        ListView listView = (ListView) findViewById(R.id.filelist);
-        List<String> filenames = fileManager.getFileListing();
-        if (filenames == null) return;
-        Collections.sort(filenames, Collections.reverseOrder());
-        String tsDateEOL = ".*\\d{8}-\\d{6}$";
-        List<String> filenamesFiltered = new ArrayList<String>();
-        for (String l : filenames)
-            if (l.matches(tsDateEOL))
-                filenamesFiltered.add(l);
-        ArrayAdapter<String> fileList =
-            new ArrayAdapter<String>(this, R.layout.row, filenamesFiltered);
-
-        listView.setAdapter(fileList);
-
-    }
-    
-    public void setRecordingStatusText(String text) {
-        recordingFileText.setText(text);
-    }
-    
-    @Override
-    public void onBackPressed() {
-        if (logger.isActive())
-            displayToast("Stop data logging before exiting");
-        else
-            super.onBackPressed();
-    }
-    
-    public boolean haveGyro() { return haveGyro; }
- 
-    private void displayToast(String msg) {
-        Toast.makeText(getBaseContext(), msg, 
-                Toast.LENGTH_SHORT).show();        
-    }    
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        logger.stopLogging();
-        soundrec.release();
-    } 
-     
-    
-    public String getTimestamp() {
-        Date dateNow = new Date ();
-        SimpleDateFormat tsFormat = new SimpleDateFormat("yyyyMMdd-HHmmss");
-        return tsFormat.format(dateNow).toString();
-    }
     
 }

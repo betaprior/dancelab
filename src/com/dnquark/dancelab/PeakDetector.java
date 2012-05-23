@@ -24,6 +24,7 @@ class PeakDetector implements Callback {
     }
 
     private static final String TAG = "DanceLab PeakDetector";
+    private static final int BURN_IN_PTS = 30;
     //private static enum TriggerType { TRIGGER_ON_MAX, TRIGGER_ON_LEVEL};
     //private TriggerType triggerType = TriggerType.TRIGGER_ON_MAX;
     private HandlerThread handlerThread;
@@ -71,9 +72,9 @@ class PeakDetector implements Callback {
 
     @Override
     public boolean handleMessage(Message m) {
+        if (m.obj == null) return true;
         n++;
         //Log.d(TAG, "Receiving message " + Integer.toString(n));
-        int BURN_IN_PTS = 150;
         double a = ((Datapoint)m.obj).a;
         long t = ((Datapoint)m.obj).t;
         double xbar = mean; // prev. mean
@@ -91,15 +92,15 @@ class PeakDetector implements Callback {
         
         if (a > maxAccel) {
             maxAccel = a;          
-            // Log.d(TAG, "thresh:"+Double.toString(a)+","+Double.toString(sd));
+   //          Log.d(TAG, "thresh:"+Double.toString(a)+","+Double.toString(sd));
             	
             peakTriggerSet = (a > mean + sd * thrSigma && a > thrGAbsolute);
-            // if (peakTriggerSet) Log.d(TAG, "Trigger set on accel " + Double.toString(a) + " exceeding thresh " + Double.toString(mean + sd * thrSigma) + " and " + Double.toString(thrGAbsolute) + "; mean is " + Double.toString(mean) + " and sd is " + Double.toString(sd));
+   //          if (peakTriggerSet) Log.d(TAG, "Trigger set on accel " + Double.toString(a) + " exceeding thresh " + Double.toString(mean + sd * thrSigma) + " and " + Double.toString(thrGAbsolute) + "; mean is " + Double.toString(mean) + " and sd is " + Double.toString(sd));
         } else
             if (peakTriggerSet) {
                 peakTriggerSet = false;
                 reportPeak(tprev);
-                // Log.d(TAG, "thresh: reporting peak accel " + Double.toString(maxAccel));
+   //              Log.d(TAG, "thresh: reporting peak accel " + Double.toString(maxAccel));
                 maxAccel = Double.MIN_VALUE;
             }     
             

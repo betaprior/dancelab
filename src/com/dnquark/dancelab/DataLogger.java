@@ -25,6 +25,7 @@ class DataLogger implements SensorEventListener {
     private String metaFilename, saveFilename = FileManager.SAVE_FILENAME_BASE;
     private static final int NDIMS = 3;
     private static final int NANO_IN_MILLI = 1000000;
+    static final String EOL = String.format("%n");
     private float[] accelVals, gyroVals;
     private float accelMagnitude;
     private boolean loggingIsOn = false, peakDetectionIsOn = false;
@@ -36,8 +37,8 @@ class DataLogger implements SensorEventListener {
     private int idx, num_a, num_g;
     private File outfile, outfileMeta;
     private BufferedWriter outfileBWriter, outfileBWriterMeta;
-    private Long tStart, tStop, tStart_epoch, tStop_epoch, tStart_ns, tStop_ns;
-    private Long eventTimestampOffset, eventTime, eventTimeWrtRef, syncReference = 0L;
+    private long tStart, tStop, tStart_epoch, tStop_epoch, tStart_ns, tStop_ns;
+    private long eventTimestampOffset, eventTime, eventTimeWrtRef, offsetReference = 0L;
 
     public DataLogger(DanceLab danceLab) { 
         this.danceLab = danceLab;
@@ -61,7 +62,7 @@ class DataLogger implements SensorEventListener {
         tStart = SystemClock.uptimeMillis();
         tStart_ns = System.nanoTime();
         tStart_epoch = System.currentTimeMillis();
-        // syncReference = tStart_epoch;
+        offsetReference = tStart_epoch;
         setEventTimestampOffset();
         writeMetadataStart();
         loggingIsOn = true;
@@ -131,11 +132,36 @@ class DataLogger implements SensorEventListener {
         } catch (IOException e) { }
     }
 
+    public void setOffsetReference(long ref) { offsetReference = ref; }
+
     private void setEventTimestampOffset() {
-        eventTimestampOffset = danceLab.ntpClient.isValid() ? 
-            (danceLab.ntpClient.getNtpTime() - danceLab.ntpClient.getNtpTimeReference())
-            : (tStart_epoch - tStart_ns / NANO_IN_MILLI);
-        syncReference = tStart_ns / NANO_IN_MILLI + eventTimestampOffset;
+        boolean ntpAvailable = danceLab.ntpClient.isValid();
+        long tOnAbsolute =  System.currentTimeMillis() - System.nanoTime() / NANO_IN_MILLI;
+        long nowEpochMs = System.currentTimeMillis();
+        if (ntpAvailable) {
+            eventTimestampOffset = danceLab.ntpClient.getNtpTime() - danceLab.ntpClient.getNtpTimeReference();
+            // Log.d(TAG, "TIMESTAMP: using current NTP data; " + "OFFSET: " + Long.toString(eventTimestampOffset));
+
+        } else { // retrieve saved NTP data
+            long ntpSavedRefMs = danceLab.appDataPrefs.getLong("ntpSyncTimeRef",0L);
+            // ntpSavedRefAbsoluteMs gives the timestamp of when NTP value was recorded 
+            long ntpSavedRefAbsoluteMs = danceLab.appDataPrefs.getLong("ntpSyncTimeEpoch",0L);
+            long ntpSavedNtpTime = danceLab.appDataPrefs.getLong("ntpTime", 0L);
+            //TODO (maybe): put in a "max staleness" limit for saved NTP data
+            if (ntpSavedRefMs > 0 && ntpSavedRefAbsoluteMs > 0  && ntpSavedNtpTime > 0 &&
+                    // ascertain that phone hasn't been restarted since the NTP data were saved
+                    System.nanoTime() / NANO_IN_MILLI > (nowEpochMs - ntpSavedRefAbsoluteMs)) {
+                eventTimestampOffset = ntpSavedNtpTime - ntpSavedRefMs;
+                // Log.d(TAG, "TIMESTAMP: using saved NTP data from " + Long.toString(ntpSavedRefAbsoluteMs) + " (staleness: " + Long.toString(nowEpochMs - ntpSavedRefAbsoluteMs) + " ms); OFFSET: " + Long.toString(eventTimestampOffset));
+                metadataWrite("TIMESTAMP: using saved NTP data from " + Long.toString(ntpSavedRefAbsoluteMs)
+                        + " (staleness: " + Long.toString(nowEpochMs - ntpSavedRefAbsoluteMs) + " ms)" + EOL);
+            } else {
+                eventTimestampOffset = tOnAbsolute;
+                // Log.d(TAG, "TIMESTAMP: no NTP data available; adding " + Long.toString(tOnAbsolute) + " to get system clock; OFFSET: " + Long.toString(eventTimestampOffset));
+                metadataWrite("TIMESTAMP: no NTP data available; adding " + Long.toString(tOnAbsolute) + 
+                        " to get system clock" + EOL);
+            }
+        }
     }
 
     public void writeMetadataEnd() {
@@ -150,13 +176,13 @@ class DataLogger implements SensorEventListener {
         } catch (IOException e) { }
     }
     public String getRunInfo() {
-        String fmt = "%.2f";
+        String fmt = "%.1f";
         long dt = tStop - tStart;
         String dt_s = String.format(fmt, (float)dt/1000);
         String samp_t_a = String.format(fmt, (float)dt / (num_a+1));
         String samp_t_g = String.format(fmt, (float)dt / (num_g+1));
-        String res = "len=" + dt_s + " s; " + samp_t_a + " ms/acc smp";
-        if (danceLab.haveGyro()) res += "; " + samp_t_g + " ms/gyr smp";
+        String res = "Recorded " + dt_s + " s; smp int: A:" + samp_t_a + " ms";
+        if (danceLab.haveGyro()) res += "; G:" + samp_t_g + " ms";
         return res;
     }
 
@@ -188,13 +214,13 @@ class DataLogger implements SensorEventListener {
         }
     }
 
-    public void setSyncReference(long ref) { syncReference = ref; }
-
     public void onSensorChanged(SensorEvent event) {
         // Log.d(TAG, "idx = " + idx + "sensor: " + event.sensor + ", x: " + event.values[0] + ", y: " + event.values[1] + ", z: " + event.values[2]);
         synchronized (this) {     
             eventTime = event.timestamp / NANO_IN_MILLI + eventTimestampOffset;
-            eventTimeWrtRef = eventTime - syncReference;
+            // offsetReference == {tStart_epoch OR last sync timestamp (epoch format), if set}
+            // thus, eventTimeWrtRef gives milliseconds since {start OR sync} vs epoch timestamp
+            eventTimeWrtRef = eventTime - offsetReference;
             switch (event.sensor.getType()) {
             case Sensor.TYPE_ACCELEROMETER:
                 num_a++;
