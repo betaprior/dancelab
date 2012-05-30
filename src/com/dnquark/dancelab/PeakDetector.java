@@ -36,7 +36,8 @@ class PeakDetector implements Callback {
     private double maxAccel = Double.MIN_VALUE;    
     private boolean peakTriggerSet = false;
     private long tprev;
-    
+    private double aprev;
+
     static class Datapoint {
         long t;
         float a;
@@ -99,19 +100,20 @@ class PeakDetector implements Callback {
         } else
             if (peakTriggerSet) {
                 peakTriggerSet = false;
-                reportPeak(tprev);
+                reportPeak(tprev, aprev);
    //              Log.d(TAG, "thresh: reporting peak accel " + Double.toString(maxAccel));
                 maxAccel = Double.MIN_VALUE;
             }     
             
         tprev = t;
+        aprev = a;
         return true;
     }
 
-    private void reportPeak(final long t) {
+    private void reportPeak(final long t, final double a) {
         danceLab.runOnUiThread(new Runnable() {
             public void run() {
-                PeakDetector.this.danceLab.finalizeShockSensorSync(t);
+                PeakDetector.this.danceLab.finalizeShockSensorSync(t, a);
             }
         });
     }

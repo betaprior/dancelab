@@ -114,7 +114,6 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         ntpStatusText = (TextView) findViewById(R.id.textViewStatusNtp);
         setRecordingStatusText("Recording to: " + fileManager.getDataDir().getPath());
         syncButton = (Button) findViewById(R.id.syncButton1);
-        setupSyncButtonLongPress();
         stopButton = (Button) findViewById(R.id.stopButton1);
         setupStopButtonLongPress();
  
@@ -362,6 +361,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         case R.id.syncButton1:
             startRecording();
             startShockSensorSync();
+            // only want long-press behavior after the logger is running
+            setupSyncButtonLongPress(); 
             break;
         }
     }
@@ -390,11 +391,12 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     }
     
    
-    public void finalizeShockSensorSync(long timestamp) {
+    public void finalizeShockSensorSync(long timestamp, double accel) {
         logger.setPeakDetectorEnabled(false);
         logger.setOffsetReference(timestamp);
         graphView.setDrawSyncThreshold(false);
-        logger.metadataWrite("SYNC: " + Long.toString(timestamp) + EOL);
+        logger.metadataWrite("SYNC: " + Long.toString(timestamp) + 
+                " " + Double.toString(accel) + EOL);
         syncButton.setEnabled(false);
         syncButton.setEnabled(true);
         syncButton.getBackground().setColorFilter(0xFF00FF00, PorterDuff.Mode.MULTIPLY);    
