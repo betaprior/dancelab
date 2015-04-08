@@ -32,7 +32,7 @@ class PeakDetector implements Callback {
     private Handler handler;
     private int n = 0;
     private double mean = 0,var = 0, sd = 0, x2sum = 0;
-    private double thrSigma = 2.1, thrGAbsolute = 11.4;
+    private double thrSigma = 3.1, thrGAbsolute = 17;
     private double maxAccel = Double.MIN_VALUE;    
     private boolean peakTriggerSet = false;
     private long tprev;
