@@ -4,7 +4,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-
+import java.lang.StringBuilder;
 import android.content.Context;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -17,7 +17,7 @@ import android.util.Log;
 
 class DataLogger implements SensorEventListener {
     /**
-     * 
+     *
      */
     final DanceLab danceLab;
     private static final String TAG = "DanceLab DataLogger";
@@ -39,8 +39,9 @@ class DataLogger implements SensorEventListener {
     private BufferedWriter outfileBWriter, outfileBWriterMeta;
     private long tStart, tStop, tStart_epoch, tStop_epoch, tStart_ns, tStop_ns;
     private long eventTimestampOffset, eventTime, eventTimeWrtRef, offsetReference = 0L;
+    private StringBuilder stringBuilder;
 
-    public DataLogger(DanceLab danceLab) { 
+    public DataLogger(DanceLab danceLab) {
         this.danceLab = danceLab;
         mSensorManager = (SensorManager) this.danceLab.getSystemService(Context.SENSOR_SERVICE);
         peakDet = new PeakDetector(danceLab);
@@ -50,13 +51,14 @@ class DataLogger implements SensorEventListener {
             accelVals[i] = gyroVals[i] = 0;
         tStart = tStop = tStart_ns = tStop_ns = 0L;
         idx = num_a = num_g = 0;
-
+        stringBuilder = new StringBuilder(4096);
     }
 
     public boolean isActive() { return loggingIsOn; }
     public boolean peakDetectorActive() { return peakDetectionIsOn; }
 
     protected void startLogging() {
+        danceLab.dataStreamer.connect();
         registerListeners();
         prepFileIO();
         tStart = SystemClock.uptimeMillis();
@@ -71,6 +73,7 @@ class DataLogger implements SensorEventListener {
     protected void stopLogging() {
         if (!loggingIsOn) return;
         loggingIsOn = false;
+        danceLab.dataStreamer.disconnect();
         unregisterListeners();
         tStop = SystemClock.uptimeMillis();
         tStop_ns = System.nanoTime();
@@ -109,7 +112,7 @@ class DataLogger implements SensorEventListener {
         //      mSensorManager.registerListener(this,
         //                 mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR),
         //                 SensorManager.SENSOR_DELAY_FASTEST);
-        mSensorManager.registerListener(this, 
+        mSensorManager.registerListener(this,
                 mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE),
                 gyroSensorRate);
     }
@@ -120,7 +123,7 @@ class DataLogger implements SensorEventListener {
 
     public void writeMetadataStart() {
         try {
-            outfileBWriterMeta.write("t_i " + Long.toString(tStart) 
+            outfileBWriterMeta.write("t_i " + Long.toString(tStart)
                     + " " + Long.toString(tStart_ns));
             outfileBWriterMeta.newLine();
         } catch (IOException e) { }
@@ -144,7 +147,7 @@ class DataLogger implements SensorEventListener {
 
         } else { // retrieve saved NTP data
             long ntpSavedRefMs = danceLab.appDataPrefs.getLong("ntpSyncTimeRef",0L);
-            // ntpSavedRefAbsoluteMs gives the timestamp of when NTP value was recorded 
+            // ntpSavedRefAbsoluteMs gives the timestamp of when NTP value was recorded
             long ntpSavedRefAbsoluteMs = danceLab.appDataPrefs.getLong("ntpSyncTimeEpoch",0L);
             long ntpSavedNtpTime = danceLab.appDataPrefs.getLong("ntpTime", 0L);
             //TODO (maybe): put in a "max staleness" limit for saved NTP data
@@ -158,7 +161,7 @@ class DataLogger implements SensorEventListener {
             } else {
                 eventTimestampOffset = tOnAbsolute;
                 // Log.d(TAG, "TIMESTAMP: no NTP data available; adding " + Long.toString(tOnAbsolute) + " to get system clock; OFFSET: " + Long.toString(eventTimestampOffset));
-                metadataWrite("TIMESTAMP: no NTP data available; adding " + Long.toString(tOnAbsolute) + 
+                metadataWrite("TIMESTAMP: no NTP data available; adding " + Long.toString(tOnAbsolute) +
                         " to get system clock" + EOL);
             }
         }
@@ -168,10 +171,10 @@ class DataLogger implements SensorEventListener {
         long diffStartStop = tStop - tStart;
         float msPerSample = diffStartStop/(idx+1);
         try {
-            outfileBWriterMeta.write("t_f " + Long.toString(tStop)  
+            outfileBWriterMeta.write("t_f " + Long.toString(tStop)
                     + " " + Long.toString(tStop_ns));
             outfileBWriterMeta.newLine();
-            outfileBWriterMeta.write("dt="+Long.toString(diffStartStop)+"; " 
+            outfileBWriterMeta.write("dt="+Long.toString(diffStartStop)+"; "
                     + Float.toString(msPerSample) + " ms per sample");
         } catch (IOException e) { }
     }
@@ -248,25 +251,25 @@ class DataLogger implements SensorEventListener {
                 writeValues(event);
         }
     }
-    
+
     public void setPeakDetectorEnabled(final boolean pdSwitch) {
         if (peakDetectionIsOn == pdSwitch)
             return;
-        else 
+        else
             peakDetectionIsOn = pdSwitch;
         if (pdSwitch)
             peakDet.init();
         else
             peakDet.stop();
     }
-   
+
     public void passToGraph() {
         GraphView.Datapoint data = new GraphView.Datapoint(eventTime, accelMagnitude);
         danceLab.getGraphView().getHandler()
             .obtainMessage(MSG_GRAPH_DATAPOINT, data)
             .sendToTarget();
-    } 
-    
+    }
+
     public void passToPeakDetector() {
         // Log.d(TAG, "Sending message");
         PeakDetector.Datapoint data = new PeakDetector.Datapoint(eventTime, accelMagnitude);
@@ -274,24 +277,29 @@ class DataLogger implements SensorEventListener {
             .obtainMessage(MSG_PEAKDET_DATAPOINT, data)
             .sendToTarget();
     }
-    
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {  } 
+
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {  }
 
     private void writeValues(SensorEvent event) {
         int i;
         try {
-            // outfileBWriter.write("TIMESTAMP TESTS:" + Long.toString(event.timestamp) + " " + Long.toString(System.currentTimeMillis()) + " " + System.nanoTime() + " " + SystemClock.elapsedRealtime() + 
+            // outfileBWriter.write("TIMESTAMP TESTS:" + Long.toString(event.timestamp) + " " + Long.toString(System.currentTimeMillis()) + " " + System.nanoTime() + " " + SystemClock.elapsedRealtime() +
                     // " " + Long.toString(ntpClient.getNtpTimeReference()) + " " +  Long.toString(time));
             // outfileBWriter.newLine();
-            outfileBWriter.write(Long.toString(eventTimeWrtRef) + ","
+           stringBuilder.delete(0, stringBuilder.length());
+           stringBuilder.append(Long.toString(eventTimeWrtRef) + ","
                     + Integer.toString(event.sensor.getType()) + ","
                     + Long.toString(eventTime) + ",");
             for (i = 0; i < NDIMS; i++)
-                outfileBWriter.write(Float.toString(accelVals[i]) + ",");
-            outfileBWriter.write(Float.toString(accelMagnitude) + ",");
-            for (i = 0; i < NDIMS - 1; i++) 
-                outfileBWriter.write(Float.toString(gyroVals[i]) + ",");
-            outfileBWriter.write(Float.toString(gyroVals[i]));
+                stringBuilder.append(Float.toString(accelVals[i]) + ",");
+            stringBuilder.append(Float.toString(accelMagnitude) + ",");
+            for (i = 0; i < NDIMS - 1; i++)
+                stringBuilder.append(Float.toString(gyroVals[i]) + ",");
+            stringBuilder.append(Float.toString(gyroVals[i]));
+
+            danceLab.dataStreamer.sendStuff(danceLab.DEVICE_ID + "," + stringBuilder.toString());
+
+            outfileBWriter.write(stringBuilder.toString());
             outfileBWriter.newLine();
         } catch (IOException e) { }
     }

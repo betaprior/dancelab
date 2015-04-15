@@ -1,8 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string-array name="sensorRateChoices">
- <item>Normal</item>
- <item>Fast</item>
- <item>Max</item>
-</string-array>
+      <item>Normal</item>
+      <item>Fast</item>
+      <item>Max</item>
+    </string-array>
+    <string-array name="ipChoices">
+      <item>192.168.1.57</item>
+      <item>10.10.10.1</item>
+      <item>10.10.10.2</item>
+      <item>10.10.10.3</item>
+    </string-array>
+    <string-array name="ipChoiceLabels">
+      <item>192.168.1.57</item>
+      <item>10.10.10.1</item>
+      <item>10.10.10.2</item>
+      <item>10.10.10.3</item>
+    </string-array>
+    <string-array name="portChoices">
+      <item>5678</item>
+      <item>5679</item>
+      <item>5680</item>
+    </string-array>
+    <string-array name="portChoiceLabels">
+      <item>5678</item>
+      <item>5679</item>
+      <item>5680</item>
+    </string-array>
 </resources>
