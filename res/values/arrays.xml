@@ -10,12 +10,14 @@
       <item>10.10.10.1</item>
       <item>10.10.10.2</item>
       <item>10.10.10.3</item>
+      <item>10.14.1.102</item>
     </string-array>
     <string-array name="ipChoiceLabels">
       <item>192.168.1.57</item>
       <item>10.10.10.1</item>
       <item>10.10.10.2</item>
       <item>10.10.10.3</item>
+      <item>10.14.1.102</item>
     </string-array>
     <string-array name="portChoices">
       <item>5678</item>

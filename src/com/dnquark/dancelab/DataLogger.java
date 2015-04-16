@@ -20,6 +20,7 @@ class DataLogger implements SensorEventListener {
      *
      */
     final DanceLab danceLab;
+    private int mcount = 0;
     private static final String TAG = "DanceLab DataLogger";
     private static final int MSG_PEAKDET_DATAPOINT = 1, MSG_GRAPH_DATAPOINT = 2;
     private String metaFilename, saveFilename = FileManager.SAVE_FILENAME_BASE;
@@ -297,7 +298,17 @@ class DataLogger implements SensorEventListener {
                 stringBuilder.append(Float.toString(gyroVals[i]) + ",");
             stringBuilder.append(Float.toString(gyroVals[i]));
 
-            danceLab.dataStreamer.sendStuff(danceLab.DEVICE_ID + "," + stringBuilder.toString());
+            // danceLab.dataStreamer.sendStuff(danceLab.DEVICE_ID + "," + stringBuilder.toString());
+            mcount++;
+            if (mcount % 1000 == 0) {
+                boolean isAlive = danceLab.dataStreamer.handlerThread.isAlive();
+                boolean isConnected = danceLab.dataStreamer.connectionOk();
+                Log.d(TAG, "SOCKET THREAD, sending message " + Integer.toString(mcount) + "; hanler thread alive? " + Boolean.toString(isAlive) + "; connection ok? " + Boolean.toString(isConnected));
+            }
+            danceLab.dataStreamer.getHandler()
+                .obtainMessage(mcount, danceLab.DEVICE_ID + "," + stringBuilder.toString())
+                .sendToTarget();
+
 
             outfileBWriter.write(stringBuilder.toString());
             outfileBWriter.newLine();
