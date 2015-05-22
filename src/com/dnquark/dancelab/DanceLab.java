@@ -1,6 +1,7 @@
 package com.dnquark.dancelab;
 
 
+import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,6 +22,8 @@ import android.hardware.SensorManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
@@ -47,6 +50,7 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
 
     public static String DEVICE_ID;
     public static boolean DEBUG_FILENAME = false;
+    public static final int MSG_CONNECTION=1, MSG_COMMAND=2, MSG_LOG=3;
 
     private static final String TAG = "DanceLab";
     private final int MENU_PREFS=1, MENU_NTP_SYNC=2, MENU_CLEAR=3, MENU_FILELIST=4;
@@ -57,8 +61,10 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     static final String EOL = String.format("%n");
 
     private TextView statusText;
+    private TextView connectionStatusText;
     private TextView recordingFileText;
     private TextView ntpStatusText;
+    private TextView appLogText;
     private GraphView graphView;
     private ListView fileListView;
     private View bgdImage;
@@ -86,6 +92,36 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     private static final int BUTTON_HOLD_INTERVAL = 2000;
     private Handler btnHoldHandler = new Handler();
 
+    // this somewhat convoluted handler is here to appease the linter:
+    // http://www.androiddesignpatterns.com/2013/01/inner-class-handler-memory-leak.html
+    private static class StatusHandler extends Handler {
+        private final WeakReference<DanceLab> activity;
+
+        public StatusHandler(DanceLab activity) {
+            this.activity = new WeakReference<DanceLab>(activity);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            DanceLab dl = activity.get();
+            if (dl != null) {
+                switch(msg.what) {
+                case MSG_CONNECTION:
+                    dl.setConnectionStatusText((String)msg.obj);
+                    break;
+                case MSG_COMMAND:
+                    dl.processExternalCommand((String)msg.obj);
+                    break;
+                case MSG_LOG:
+                    dl.processLogMessage((String)msg.obj);
+                    break;
+                default:
+                    super.handleMessage(msg);
+                }
+            }
+        }
+    }
+    private StatusHandler statusUpdateHandler;
 
     /** Called when the activity is first created. */
     @Override
@@ -104,35 +140,60 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
     }
 
     private void initComponents() {
+        // init views
+        connectionStatusText = (TextView) findViewById(R.id.connectionStatus1);
+        statusText = (TextView) findViewById(R.id.recordingStatus1);
+        recordingFileText = (TextView) findViewById(R.id.textViewStatusRecFile);
+        ntpStatusText = (TextView) findViewById(R.id.textViewStatusNtp);
+        appLogText = (TextView) findViewById(R.id.appLog);
+        syncButton = (Button) findViewById(R.id.syncButton1);
+        stopButton = (Button) findViewById(R.id.stopButton1);
+        chronometer = (Chronometer) findViewById(R.id.chronometer1);
+        graphView = (GraphView) findViewById(R.id.graphDisplay1);
+        fileListView = (ListView) findViewById(R.id.filelist);
+        // bgdImage = findViewById(R.id.bgdImage1);
+
+        // init prefs
+        prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        prefs.registerOnSharedPreferenceChangeListener(this);
+        // ok, why do I have both ways of getting prefs here? FML
+        // TODO: read http://stackoverflow.com/questions/2614719/how-do-i-get-the-sharedpreferences-from-a-preferenceactivity-in-android
+        appDataPrefs = getSharedPreferences(DATA_PREFS_FILENAME, MODE_PRIVATE);
+
+        // init components
+        statusUpdateHandler = new StatusHandler(this);
+        initializeDataStreamerFromPrefs();
+
         fileManager = new FileManager(this);
         logger = new DataLogger(this);
         soundrec = new DLSoundRecorder(this);
         ntpClient = new SntpClient();
-        dataStreamer = new DataStreamer();
 
-        appDataPrefs = getSharedPreferences(DATA_PREFS_FILENAME, MODE_PRIVATE);
 
-        statusText = (TextView) findViewById(R.id.recordingStatus1);
-        recordingFileText = (TextView) findViewById(R.id.textViewStatusRecFile);
-        ntpStatusText = (TextView) findViewById(R.id.textViewStatusNtp);
-        setRecordingStatusText("Recording to: " + fileManager.getDataDir().getPath());
-        syncButton = (Button) findViewById(R.id.syncButton1);
-        stopButton = (Button) findViewById(R.id.stopButton1);
         setupStopButtonLongPress();
+        setRecordingStatusText("Recording to: " + fileManager.getDataDir().getPath());
 
-        chronometer = (Chronometer) findViewById(R.id.chronometer1);
         initializeChronometer();
 
-        graphView = (GraphView) findViewById(R.id.graphDisplay1);
-        fileListView = (ListView) findViewById(R.id.filelist);
-        bgdImage = findViewById(R.id.bgdImage1);
 
         haveGyro = this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE);
 
         pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, TAG);
-        prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        prefs.registerOnSharedPreferenceChangeListener(this);
+        wl = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, TAG);
+    }
+
+    private void initializeDataStreamerFromPrefs() {
+        int serverPort = Integer.parseInt(prefs.getString("prefsServerPort", "5678"));
+        String serverIP = prefs.getString("prefsServerIP", "192.168.1.57");
+        if (dataStreamer == null) {
+            Log.d(TAG, "Creating new DataStreamer object");
+            dataStreamer = new DataStreamer(serverIP, serverPort, statusUpdateHandler);
+        } else {
+            Log.d(TAG, "Reinitializing connection info on DataStreamer object");
+            dataStreamer.setServerPort(serverPort);
+            dataStreamer.setServerIP(serverIP);
+            dataStreamer.reconnect();
+        }
     }
 
     private View.OnTouchListener myButtonLongPressListener(final Runnable delayedAction) {
@@ -227,7 +288,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         fileListView.setVisibility(fileListView.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
     }
     private void toggleBgdImage(int state) {
-        findViewById(R.id.bgdImage1).setVisibility(state == ON ? View.VISIBLE : View.GONE);
+        // findViewById(R.id.bgdImage1).setVisibility(state == ON ? View.VISIBLE : View.GONE);
+        findViewById(R.id.appLog).setVisibility(state == ON ? View.VISIBLE : View.GONE);
     }
     private void toggleBgdImage() {
         bgdImage.setVisibility(bgdImage.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
@@ -239,6 +301,10 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         graphView.setVisibility(graphView.getVisibility() != View.VISIBLE ? View.VISIBLE : View.GONE);
     }
     public View getGraphView() { return graphView; }
+
+    public StatusHandler getStatusUpdateHandler() {
+        return statusUpdateHandler;
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -255,10 +321,8 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         logger.setSensorRate(Sensor.TYPE_GYROSCOPE,
                 samplingRatePrefStringDecode(prefs.getString("prefsGyroSamplingRate", "")));
         if (key.equals("prefsServerIP") || key.equals("prefsServerPort")) {
-            int serverPort = Integer.parseInt(prefs.getString("prefsServerPort", "5678"));
-            String serverIP = prefs.getString("prefsServerIP", "192.168.1.57");
-            dataStreamer = new DataStreamer(serverIP, serverPort);
-            Log.d(TAG, "Setting serverIP and port to " + serverIP + " and " + Integer.toString(serverPort));
+            Log.d(TAG, "Connection info has changed, reinitializing DataStreamer");
+            initializeDataStreamerFromPrefs();
         }
     }
 
@@ -376,9 +440,36 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         }
     }
 
+    public void processLogMessage(String msg) {
+        appLogText.append(msg + "\n");
+        // find the amount we need to scroll.  This works by
+        // asking the TextView's internal layout for the position
+        // of the final line and then subtracting the TextView's height
+        // final int scrollAmount = appLogText.getLayout().getLineTop(appLogText.getLineCount()) - appLogText.getHeight();
+        // // if there is no need to scroll, scrollAmount will be <=0
+        // if (scrollAmount > 0)
+        //     appLogText.scrollTo(0, scrollAmount);
+        // else
+        //     appLogText.scrollTo(0, 0);
+    }
+
+    public void processExternalCommand(String cmd) {
+        Log.d(TAG, "EXTCMD: " + cmd);
+        if (cmd.equals("start")) {
+            startRecording();
+        } else if (cmd.equals("stop")) {
+            stopRecording();
+            // wl.acquire(); // reacquire wakelock
+            // Log.d(TAG, "Reacquiring wakelock");
+        } else {
+            Log.d(TAG, "Received unknown command: " + cmd);
+        }
+    }
+
     private void startRecording() {
         if (logger.isActive()) return;
         wl.acquire();
+        Log.d(TAG, "Acquiring wakelock");
         fileManager.makeTsFilename();
         graphView.prepareDataHandlers();
         soundrec.start();
@@ -413,8 +504,11 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
 
 
     public void stopRecording() {
-        if (wl.isHeld())
+        if (wl.isHeld()) {
             wl.release();
+            Log.d(TAG, "Releasing wakelock");
+        }
+        if (!logger.isActive()) return;
         logger.stopLogging();
         soundrec.stop();
         chronometer.stop();
@@ -449,6 +543,10 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
 
     public void setRecordingStatusText(String text) {
         recordingFileText.setText(text);
+    }
+
+    public void setConnectionStatusText(String text) {
+        connectionStatusText.setText(text);
     }
 
     @Override
@@ -533,6 +631,5 @@ public class DanceLab extends Activity implements OnSharedPreferenceChangeListen
         }
 
     }
-
 
 }

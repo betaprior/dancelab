@@ -3,9 +3,9 @@
     android:layout_width="fill_parent"
     android:layout_height="fill_parent" android:orientation="vertical">
 
-<TextView  
-    android:layout_width="fill_parent" 
-    android:layout_height="wrap_content" 
+<TextView
+    android:layout_width="fill_parent"
+    android:layout_height="wrap_content"
     android:text="@string/titleDanceLab"
     android:id="@+id/titleText1"/>
 
@@ -33,19 +33,25 @@
 
 </LinearLayout>
 <TextView android:text="" android:id="@+id/recordingStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
+<TextView android:text="" android:id="@+id/connectionStatus1" android:layout_width="wrap_content" android:layout_height="wrap_content"></TextView>
 <FrameLayout
 android:layout_width="fill_parent"
 android:layout_height="fill_parent">
-<ImageView
-android:id="@+id/bgdImage1"    
-android:src="@drawable/lindyhop1"
-android:scaleType="fitCenter"
-android:layout_width="fill_parent"
-android:layout_height="fill_parent"/>
+<TextView
+    android:id="@+id/appLog"
+    android:gravity="bottom"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent" />
+<!-- <ImageView -->
+<!-- android:id="@+id/bgdImage1" -->
+<!-- android:src="@drawable/lindyhop1" -->
+<!-- android:scaleType="fitCenter" -->
+<!-- android:layout_width="fill_parent" -->
+<!-- android:layout_height="fill_parent"/> -->
 <ListView
  android:id="@+id/filelist"
- android:layout_width="fill_parent" 
- android:layout_height="wrap_content" 
+ android:layout_width="fill_parent"
+ android:layout_height="wrap_content"
  />
 <com.dnquark.dancelab.GraphView
     android:id="@+id/graphDisplay1"
@@ -55,4 +61,3 @@ android:layout_height="fill_parent"/>
 </FrameLayout>
 
 </LinearLayout>
-

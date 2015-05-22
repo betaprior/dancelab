@@ -6,27 +6,35 @@
       <item>Max</item>
     </string-array>
     <string-array name="ipChoices">
+      <item>192.168.0.100</item>
+      <item>192.168.0.101</item>
+      <item>192.168.0.102</item>
+      <item>192.168.0.103</item>
       <item>192.168.1.57</item>
+      <item>192.168.43.216</item>
       <item>10.10.10.1</item>
-      <item>10.10.10.2</item>
-      <item>10.10.10.3</item>
-      <item>10.14.1.102</item>
     </string-array>
     <string-array name="ipChoiceLabels">
+      <item>192.168.0.100</item>
+      <item>192.168.0.101</item>
+      <item>192.168.0.102</item>
+      <item>192.168.0.103</item>
       <item>192.168.1.57</item>
+      <item>192.168.43.216</item>
       <item>10.10.10.1</item>
-      <item>10.10.10.2</item>
-      <item>10.10.10.3</item>
-      <item>10.14.1.102</item>
     </string-array>
     <string-array name="portChoices">
       <item>5678</item>
       <item>5679</item>
       <item>5680</item>
+      <item>5681</item>
+      <item>5682</item>
     </string-array>
     <string-array name="portChoiceLabels">
       <item>5678</item>
       <item>5679</item>
       <item>5680</item>
+      <item>5681</item>
+      <item>5682</item>
     </string-array>
 </resources>

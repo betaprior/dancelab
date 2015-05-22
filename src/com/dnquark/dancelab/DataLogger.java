@@ -59,7 +59,6 @@ class DataLogger implements SensorEventListener {
     public boolean peakDetectorActive() { return peakDetectionIsOn; }
 
     protected void startLogging() {
-        danceLab.dataStreamer.connect();
         registerListeners();
         prepFileIO();
         tStart = SystemClock.uptimeMillis();
@@ -67,6 +66,7 @@ class DataLogger implements SensorEventListener {
         tStart_epoch = System.currentTimeMillis();
         offsetReference = tStart_epoch;
         setEventTimestampOffset();
+        sendMetadataStart();
         writeMetadataStart();
         loggingIsOn = true;
     }
@@ -74,13 +74,25 @@ class DataLogger implements SensorEventListener {
     protected void stopLogging() {
         if (!loggingIsOn) return;
         loggingIsOn = false;
-        danceLab.dataStreamer.disconnect();
         unregisterListeners();
         tStop = SystemClock.uptimeMillis();
         tStop_ns = System.nanoTime();
         tStop_epoch = System.currentTimeMillis();
+        sendMetadataStop();
         writeMetadataEnd();
         finalizeFileIO();
+    }
+
+    private void sendMetadataStart() {
+        danceLab.dataStreamer.getHandler()
+            .obtainMessage(1, "@" + "," + danceLab.DEVICE_ID + "," + "START")
+            .sendToTarget();
+    }
+
+   private void sendMetadataStop() {
+        danceLab.dataStreamer.getHandler()
+            .obtainMessage(1, "@" + "," + danceLab.DEVICE_ID + "," + "STOP")
+            .sendToTarget();
     }
 
     public void setSensorRate(int sensorType, int r) {
